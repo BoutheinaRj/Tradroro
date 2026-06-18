@@ -461,6 +461,69 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() })
 })
 
+// ============ NLP INTENT PARSING ============
+app.post("/api/parse-intent", async (req, res) => {
+  const { text } = req.body
+  if (!text || typeof text !== "string") {
+    return res.status(400).json({ ok: false, message: "Text is required" })
+  }
+
+  try {
+    // Call FastAPI backend on 8000 (productivity_api)
+    const response = await fetch("http://localhost:8000/productivity/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`FastAPI error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    res.json({
+      intent: data.intent || "unknown",
+      params: data.params || {},
+      confidence: data.confidence || 0,
+    })
+  } catch (err) {
+    console.error("Intent parsing error:", err)
+    res.json({
+      intent: "unknown",
+      params: {},
+      message: "Unable to analyze intent",
+    })
+  }
+})
+
+// ============ FOCUS SESSION ENDPOINTS ============
+app.post("/api/focus/start", (req, res) => {
+  const { minutes = 25 } = req.body
+  res.json({
+    ok: true,
+    message: `Focus session started (${minutes} minutes)!`,
+    session_id: "sess_" + Date.now(),
+    minutes,
+    started_at: new Date().toISOString(),
+  })
+})
+
+app.post("/api/focus/pause", (req, res) => {
+  res.json({
+    ok: true,
+    message: "Focus session paused",
+    paused_at: new Date().toISOString(),
+  })
+})
+
+app.post("/api/focus/resume", (req, res) => {
+  res.json({
+    ok: true,
+    message: "Focus session resumed",
+    resumed_at: new Date().toISOString(),
+  })
+})
+
 app.listen(PORT, () => {
   console.log(`🚀 TRADRLY BOT Server running on http://localhost:${PORT}`)
 })

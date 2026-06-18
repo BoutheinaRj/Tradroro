@@ -1,0 +1,90 @@
+from gemini_understanding import understand_command
+import json
+
+# Test 1: CREATE_TASK
+print("=" * 60)
+print("TEST 1: CREATE_TASK (context=tasks)")
+print("=" * 60)
+r = understand_command("cree une tache acheter du pain", "tasks")
+print(f"Intent: {r['intent']}")
+print(f"Confidence: {r['confidence']}")
+print(f"Title: {r['parameters'].get('title')}")
+print(f"Source: {r.get('_source')}")
+print()
+
+# Test 2: LIST_TASKS
+print("=" * 60)
+print("TEST 2: LIST_TASKS (context=tasks)")
+print("=" * 60)
+r = understand_command("montre mes taches", "tasks")
+print(f"Intent: {r['intent']}")
+print(f"Confidence: {r['confidence']}")
+print(f"Source: {r.get('_source')}")
+print()
+
+# Test 3: UPDATE_TASK
+print("=" * 60)
+print("TEST 3: UPDATE_TASK (context=tasks)")
+print("=" * 60)
+r = understand_command("marque la tache 3 comme done", "tasks")
+print(f"Intent: {r['intent']}")
+print(f"Confidence: {r['confidence']}")
+print(f"ID: {r['parameters'].get('id')}")
+print(f"Status: {r['parameters'].get('status')}")
+print(f"Source: {r.get('_source')}")
+print()
+
+# Test 4: DELETE_TASK
+print("=" * 60)
+print("TEST 4: DELETE_TASK (context=tasks)")
+print("=" * 60)
+r = understand_command("supprime la tache 2", "tasks")
+print(f"Intent: {r['intent']}")
+print(f"Confidence: {r['confidence']}")
+print(f"ID: {r['parameters'].get('id')}")
+print(f"Source: {r.get('_source')}")
+print()
+
+# Test 5: SCHEDULE_EVENT
+print("=" * 60)
+print("TEST 5: SCHEDULE_EVENT (context=events)")
+print("=" * 60)
+r = understand_command("planifie une reunion demain a 14h", "events")
+print(f"Intent: {r['intent']}")
+print(f"Confidence: {r['confidence']}")
+print(f"Title: {r['parameters'].get('title')}")
+print(f"Start time: {r['parameters'].get('start_time')}")
+print(f"Source: {r.get('_source')}")
+print()
+
+# Test 6: START_FOCUS
+print("=" * 60)
+print("TEST 6: START_FOCUS (context=focus)")
+print("=" * 60)
+r = understand_command("demarre un focus de 45 minutes", "focus")
+print(f"Intent: {r['intent']}")
+print(f"Confidence: {r['confidence']}")
+print(f"Duration: {r['parameters'].get('duration')}")
+print(f"Source: {r.get('_source')}")
+print()
+
+# Test 7: STOP_FOCUS
+print("=" * 60)
+print("TEST 7: STOP_FOCUS (context=focus)")
+print("=" * 60)
+r = understand_command("arrete le focus", "focus")
+print(f"Intent: {r['intent']}")
+print(f"Confidence: {r['confidence']}")
+print(f"Source: {r.get('_source')}")
+print()
+
+# Test 8: CONTEXT VALIDATION (tasks command in events context)
+print("=" * 60)
+print("TEST 8: CONTEXT VALIDATION - Wrong context")
+print("(Asking 'create task' while in 'events' context)")
+print("=" * 60)
+r = understand_command("cree une tache", "events")
+print(f"Intent: {r['intent']}")
+print(f"Confidence: {r['confidence']}")
+print(f"Natural response: {r['natural_response'][:80]}...")
+print(f"Source: {r.get('_source')}")

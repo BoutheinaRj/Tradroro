@@ -2,13 +2,9 @@ import { useEffect, useRef, useState } from "react"
 import { DATA, findReply } from "./data"
 import type { CategoryKey, ChatMessage } from "./types"
 import ProductivityHome from "./ProductivityHome"
-import TasksView from "./TasksView"
-import CalendarView from "./CalendarView"
-import FocusView from "./FocusView"
 
 export default function App() {
   const [cat, setCat] = useState<CategoryKey>("desktop")
-  const [prodView, setProdView] = useState<"home" | "tasks" | "calendar" | "focus">("home")
   const [msgs, setMsgs] = useState<ChatMessage[]>([])
   const [typing, setTyping] = useState(false)
   const [status, setStatus] = useState("Online")
@@ -22,7 +18,6 @@ export default function App() {
         text: `Hi 👋 I'm TRADRLY BOT. Pick a "${DATA[cat].name}" command below.`,
       },
     ])
-    setProdView("home")
   }, [cat])
 
   useEffect(() => {
@@ -37,18 +32,7 @@ export default function App() {
   setStatus("Typing...");
 
   // 🔥 Déterminer le contexte en fonction de la catégorie
-  let context = "tasks"; // par défaut
-  if (cat === "prod") {
-    // Si on est dans la vue prod, utiliser le sous‑menu actif
-    if (prodView === "tasks") context = "tasks";
-    else if (prodView === "calendar") context = "calendar";
-    else if (prodView === "focus") context = "focus";
-    else context = "tasks"; // home -> tasks par défaut
-  } else {
-    // Pour les autres catégories (desktop, dev, etc.), on peut mettre "tasks" par défaut
-    // ou gérer selon le besoin, mais pour l'instant on laisse "tasks"
-    context = "tasks";
-  }
+  const context = "tasks"; // prod sub-view managed internally by ProductivityHome
 
   // 🔥 URL du backend (port 8000)
   const API_URL = "http://localhost:8000/productivity/execute";
@@ -63,7 +47,7 @@ export default function App() {
       window.setTimeout(() => {
         setTyping(false);
         setStatus("Online");
-        setMsgs((m) => [...m, { who: "bot", text: data.message || "Je n’ai pas compris." }]);
+        setMsgs((m) => [...m, { who: "bot", text: data.message || "I didn't understand." }]);
       }, 900);
     })
     .catch(() => {
@@ -119,15 +103,7 @@ export default function App() {
           ))}
         </aside>
         {cat === "prod" ? (
-          prodView === "home" ? (
-            <ProductivityHome go={(view) => setProdView(view)} />
-          ) : prodView === "tasks" ? (
-            <TasksView back={() => setProdView("home")} />
-          ) : prodView === "calendar" ? (
-            <CalendarView back={() => setProdView("home")} />
-          ) : (
-            <FocusView back={() => setProdView("home")} />
-          )
+          <ProductivityHome />
         ) : (
           <div className="chatwrap">
             <div className="chead">

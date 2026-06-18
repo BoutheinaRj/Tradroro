@@ -1,229 +1,189 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import GeminiBar from "./GeminiBar"
 
-const API = "http://localhost:8000"
+const API_PYTHON = "http://localhost:8000"
 
 type Task = {
   id: number
   title: string
   status: string
+  priority: number
+  priority_label: string
+  assignee?: string
+  deadline?: string
+  description?: string
   created_at?: string
 }
 
 export default function TasksView({ back }: { back: () => void }) {
   const [tasks, setTasks] = useState<Task[]>([])
-  const [title, setTitle] = useState("")
-  const [cmd, setCmd] = useState("")
-  const [log, setLog] = useState<string[]>([])
-  const [toast, setToast] = useState("")
-  const logRef = useRef<HTMLDivElement>(null)
 
   const stats = useMemo(() => {
     const total = tasks.length
     const done = tasks.filter((t) => t.status === "done").length
     const todo = tasks.filter((t) => t.status === "todo").length
-    return { total, done, todo }
+    const byPriority = {
+      urgent: tasks.filter((t) => t.priority === 5).length,
+      important: tasks.filter((t) => t.priority === 4).length,
+      normal: tasks.filter((t) => t.priority === 3).length,
+    }
+    return { total, done, todo, byPriority }
   }, [tasks])
 
   async function refresh() {
-    const r = await fetch(`${API}/tasks`)
-    const data = await r.json()
-    setTasks(Array.isArray(data) ? data : [])
+    try {
+      const r = await fetch(`${API_PYTHON}/tasks`)
+      const data = await r.json()
+      setTasks(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error("fetch tasks error", e)
+    }
+  }
+
+  function handleGeminiAction(action: string, data: unknown, executed: boolean) {
+    if (!executed) return
+    // Si l'action a été exécutée, rafraîchir les tâches
+    // On délai un peu pour laisser le temps au backend de finir
+    setTimeout(() => {
+      refresh()
+    }, 100)
   }
 
   useEffect(() => {
     refresh()
   }, [])
 
-  useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
-  }, [log])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(""), 2200)
-    return () => clearTimeout(t)
-  }, [toast])
-
-  async function addTask() {
-    if (!title.trim()) return
-    await fetch(`${API}/tasks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim(), status: "todo" }),
-    })
-    setTitle("")
-    setToast("✅ Tâche ajoutée")
-    refresh()
-  }
-
-  async function delTask(id: number) {
-    await fetch(`${API}/tasks/${id}`, { method: "DELETE" })
-    setToast(`🗑️ Tâche #${id} supprimée`)
-    refresh()
-  }
-
-  async function executeText() {
-    if (!cmd.trim()) return
-    const userText = cmd.trim()
-    const r = await fetch(`${API}/productivity/execute`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: userText, context: "tasks" }),
-    })
-    const data = await r.json()
-    setLog((l) => [...l, `> ${userText}`, data?.message || "(no message)"])
-    setCmd("")
-    setToast(data?.message || "Done")
-    refresh()
-  }
-
   return (
     <div style={styles.page}>
       <div style={styles.shell}>
+        {/* Header */}
         <header style={styles.header}>
-          <button style={styles.backBtn} onClick={back}>
-            ← Retour
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button style={styles.backBtn} onClick={back}>← Back</button>
+            <div>
+              <h2 style={styles.title}>🗂️ Smart Tasks</h2>
+              <p style={styles.subtitle}>{stats.total} task{stats.total !== 1 ? "s" : ""} · {stats.done} completed</p>
+            </div>
+          </div>
           <div style={styles.statRow}>
-            <span style={chipStyle("#94a3b8")}>Total : {stats.total}</span>
-            <span style={chipStyle("#22d3ee")}>Todo : {stats.todo}</span>
-            <span style={chipStyle("#34d399")}>Done : {stats.done}</span>
+            <StatChip label="Total" value={stats.total} color="#2563eb" />
+            <StatChip label="Todo" value={stats.todo} color="#0ea5e9" />
+            <StatChip label="Done" value={stats.done} color="#16a34a" />
+            <StatChip label="Urgent" value={stats.byPriority.urgent} color="#dc2626" />
           </div>
         </header>
 
-        <h2 style={styles.title}>Tasks</h2>
+        {/* Gemini Bar */}
+        <GeminiBar 
+          context="tasks" 
+          placeholder="J'ai besoin de finir le rapport demain... / Show my urgent tasks / Marque la tâche 2 done" 
+          onAction={handleGeminiAction}
+          onRefresh={() => refresh()}
+        />
 
-        {/* Ajouter une tâche */}
+        {/* Task List */}
         <section style={styles.card}>
-          <h3 style={styles.cardTitle}>Ajouter une tâche</h3>
-          <div style={styles.inputRow}>
-            <input
-              style={styles.input}
-              placeholder="Titre de la nouvelle tâche"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") addTask()
-              }}
-            />
-            <button style={styles.primaryBtn} onClick={addTask}>
-              Ajouter
-            </button>
-          </div>
-        </section>
-
-        {/* Commande texte */}
-        <section style={styles.card}>
-          <h3 style={styles.cardTitle}>Commande (texte)</h3>
-          <div style={styles.inputRow}>
-            <input
-              style={styles.input}
-              placeholder='Ex : "Add a task: finish dashboard"'
-              value={cmd}
-              onChange={(e) => setCmd(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") executeText()
-              }}
-            />
-            <button style={styles.secondaryBtn} onClick={executeText}>
-              Envoyer
-            </button>
-          </div>
-          <div style={styles.logLabel}>Log</div>
-          <div ref={logRef} style={styles.console}>
-            {log.length === 0 ? (
-              <span style={styles.consoleEmpty}>
-                Les résultats des commandes s'affichent ici…
-              </span>
-            ) : (
-              log.map((line, i) => (
-                <div key={i} style={logLineStyle(line)}>
-                  {line}
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        {/* Liste des tâches */}
-        <section style={styles.card}>
-          <h3 style={styles.cardTitle}>Vos tâches</h3>
+          <h3 style={styles.cardTitle}>📋 Your Tasks</h3>
           <div style={styles.list}>
             {tasks.length === 0 && (
-              <p style={styles.empty}>Aucune tâche pour l'instant. Ajoutez-en une ci-dessus.</p>
+              <div style={styles.emptyBox}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>📝</div>
+                <p style={styles.empty}>Aucune tâche pour le moment.</p>
+                <p style={styles.emptyHint}>Dites à Gemini: "Crée une tâche…"</p>
+              </div>
             )}
             {tasks.map((t) => (
-              <div key={t.id} style={styles.row}>
-                <span style={styles.rowId}>#{t.id}</span>
-                <span style={styles.rowTitle}>{t.title}</span>
-                <span style={statusPillStyle(t.status)}>{t.status}</span>
-                <button
-                  style={styles.deleteBtn}
-                  title="Supprimer"
-                  onClick={() => delTask(t.id)}
-                >
-                  🗑️
-                </button>
+              <div key={t.id} style={taskRowStyle(t.status)}>
+                <span style={styles.rowNum}>#{t.id}</span>
+                <div style={styles.taskContent}>
+                  <div style={taskTitleStyle(t.status)}>{t.title}</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {t.deadline && (
+                      <span style={styles.taskMeta}>📅 {new Date(t.deadline).toLocaleDateString("fr-FR")}</span>
+                    )}
+                    {t.assignee && (
+                      <span style={styles.taskMeta}>👤 {t.assignee}</span>
+                    )}
+                  </div>
+                </div>
+                <span style={priorityPillStyle(t.priority)}>{t.priority_label}</span>
+                <span style={statusBadge(t.status)}>{t.status.toUpperCase()}</span>
               </div>
             ))}
           </div>
         </section>
-      </div>
 
-      {/* Toast */}
-      {toast && <div style={styles.toast}>{toast}</div>}
+      </div>
+    </div>
+  )
+}
+
+function StatChip({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center",
+      background: "#ffffff", border: `1px solid ${color}22`,
+      borderRadius: 10, padding: "6px 14px", minWidth: 52,
+      boxShadow: `0 1px 4px ${color}12`,
+    }}>
+      <span style={{ fontSize: 16, fontWeight: 800, color, lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
     </div>
   )
 }
 
 // ---- Styles dynamiques ----
-function chipStyle(color: string): React.CSSProperties {
+function priorityPillStyle(priority: number): React.CSSProperties {
+  const map: Record<number, string> = {
+    5: "#dc2626",
+    4: "#ea580c",
+    3: "#ca8a04",
+    2: "#0284c7",
+    1: "#6b7280",
+  }
+  const color = map[priority] || "#94a3b8"
   return {
     color,
-    background: `${color}1a`,
-    border: `1px solid ${color}55`,
+    background: `${color}12`,
+    border: `1px solid ${color}44`,
     borderRadius: 999,
-    padding: "4px 12px",
-    fontSize: 12,
-    fontWeight: 600,
-  }
-}
-
-function statusPillStyle(status: string): React.CSSProperties {
-  const s = status?.toLowerCase()
-  const map: Record<string, string> = {
-    todo: "#22d3ee",
-    in_progress: "#fbbf24",
-    doing: "#fbbf24",
-    done: "#34d399",
-    completed: "#34d399",
-  }
-  const c = map[s] || "#94a3b8"
-  return {
-    justifySelf: "start",
-    color: c,
-    background: `${c}1a`,
-    border: `1px solid ${c}55`,
-    borderRadius: 999,
-    padding: "2px 10px",
+    padding: "3px 10px",
     fontSize: 11,
     fontWeight: 600,
-    textTransform: "capitalize",
   }
 }
 
-function logLineStyle(line: string): React.CSSProperties {
-  return { color: line.startsWith(">") ? "#22d3ee" : "#86efac" }
+function taskRowStyle(status: string): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 14px",
+    background: status === "done" ? "#f0fdf4" : "#ffffff",
+    border: `1px solid ${status === "done" ? "#bbf7d0" : "#e2e8f4"}`,
+    borderRadius: 10,
+    opacity: status === "done" ? 0.75 : 1,
+    boxShadow: "0 1px 4px rgba(37,99,235,0.05)",
+  }
+}
+
+function taskTitleStyle(status: string): React.CSSProperties {
+  return {
+    fontSize: 14,
+    fontWeight: 600,
+    color: status === "done" ? "#6b7280" : "#1e293b",
+    textDecoration: status === "done" ? "line-through" : "none",
+  }
 }
 
 // ---- Styles statiques ----
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background: "radial-gradient(1200px 600px at 50% -10%, #1e293b, #0b1120)",
+    background: "#f0f4ff",
     padding: 24,
     fontFamily: "Inter, system-ui, sans-serif",
-    color: "#e2e8f0",
+    color: "#1e293b",
     display: "flex",
     justifyContent: "center",
   },
@@ -236,118 +196,82 @@ const styles: Record<string, React.CSSProperties> = {
   },
   header: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     flexWrap: "wrap",
     gap: 12,
+    background: "#ffffff",
+    borderRadius: 16,
+    padding: "16px 20px",
+    border: "1px solid #e2e8f4",
+    boxShadow: "0 2px 12px rgba(37,99,235,0.07)",
   },
   backBtn: {
-    background: "#1e293b",
-    color: "#e2e8f0",
-    border: "1px solid #334155",
-    borderRadius: 10,
-    padding: "8px 14px",
+    background: "#f1f5fe",
+    color: "#2563eb",
+    border: "1px solid #c7d9fc",
+    borderRadius: 8,
+    padding: "7px 12px",
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: 600,
+    flexShrink: 0,
   },
   statRow: { display: "flex", gap: 8, flexWrap: "wrap" },
-  title: { margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: 0.5 },
+  title: { margin: 0, fontSize: 22, fontWeight: 800, color: "#1e293b", letterSpacing: 0.2 },
+  subtitle: { margin: "2px 0 0", fontSize: 12, color: "#94a3b8", fontWeight: 500 },
   card: {
-    background: "rgba(30,41,59,0.45)",
-    border: "1px solid #1e293b",
+    background: "#ffffff",
+    border: "1px solid #e2e8f4",
     borderRadius: 16,
     padding: 18,
+    boxShadow: "0 2px 12px rgba(37,99,235,0.07)",
   },
   cardTitle: {
     margin: "0 0 12px",
     fontSize: 15,
     fontWeight: 700,
-    color: "#e2e8f0",
+    color: "#1e293b",
   },
-  inputRow: { display: "flex", gap: 8, flexWrap: "wrap" },
-  input: {
+  list: { display: "flex", flexDirection: "column", gap: 6 },
+  emptyBox: { display: "flex", flexDirection: "column", alignItems: "center", padding: "32px 0" },
+  empty: { color: "#64748b", margin: 0, fontSize: 14, fontWeight: 500 },
+  emptyHint: { color: "#94a3b8", margin: "4px 0 0", fontSize: 12 },
+  taskContent: {
     flex: 1,
-    minWidth: 180,
-    background: "#0f172a",
-    border: "1px solid #334155",
-    borderRadius: 10,
-    padding: "10px 14px",
-    color: "#e2e8f0",
-    fontSize: 14,
-    outline: "none",
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
   },
-  primaryBtn: {
-    background: "linear-gradient(135deg, #22d3ee, #6366f1)",
-    color: "#0b1120",
-    border: "none",
-    borderRadius: 10,
-    padding: "10px 22px",
-    fontWeight: 700,
-    cursor: "pointer",
-    fontSize: 14,
-  },
-  secondaryBtn: {
-    background: "linear-gradient(135deg, #a78bfa, #6366f1)",
-    color: "#0b1120",
-    border: "none",
-    borderRadius: 10,
-    padding: "10px 22px",
-    fontWeight: 700,
-    cursor: "pointer",
-    fontSize: 14,
-  },
-  logLabel: {
-    margin: "16px 0 8px",
-    fontSize: 12,
+  taskMeta: {
+    fontSize: 11,
     color: "#94a3b8",
-    fontWeight: 600,
   },
-  console: {
-    background: "#0b1120",
-    border: "1px solid #1e293b",
-    borderRadius: 10,
-    padding: 14,
-    height: 120,
-    overflowY: "auto",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: 13,
-    lineHeight: 1.6,
+  rowNum: {
+    color: "#94a3b8",
+    fontWeight: 700,
+    fontSize: 12,
+    minWidth: 30,
   },
-  consoleEmpty: { color: "#475569" },
-  list: { display: "flex", flexDirection: "column", gap: 8 },
-  empty: { color: "#475569", margin: 0, fontSize: 14 },
-  row: {
-    display: "grid",
-    gridTemplateColumns: "48px 1fr auto auto",
-    alignItems: "center",
-    gap: 12,
-    padding: "10px 12px",
-    background: "#0f172a",
-    borderRadius: 10,
-    border: "1px solid #1e293b",
-    fontSize: 14,
-  },
-  rowId: { color: "#64748b", fontWeight: 600 },
-  rowTitle: { color: "#e2e8f0", fontWeight: 500 },
-  deleteBtn: {
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    fontSize: 16,
-    opacity: 0.7,
-  },
-  toast: {
-    position: "fixed",
-    bottom: 24,
-    left: "50%",
-    transform: "translateX(-50%)",
-    background: "#1e293b",
-    color: "#e2e8f0",
-    border: "1px solid #334155",
-    borderRadius: 10,
-    padding: "10px 18px",
-    fontSize: 14,
-    boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
-    zIndex: 1000,
-  },
+}
+
+function statusBadge(status: string): React.CSSProperties {
+  const map: Record<string, [string, string]> = {
+    todo:        ["#2563eb", "#eff4ff"],
+    done:        ["#16a34a", "#f0fdf4"],
+    in_progress: ["#d97706", "#fffbeb"],
+  }
+  const [color, bg] = map[status] ?? ["#64748b", "#f8fafc"]
+  return {
+    display: "inline-block",
+    background: bg,
+    border: `1px solid ${color}44`,
+    color,
+    padding: "3px 9px",
+    borderRadius: 6,
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  }
 }
