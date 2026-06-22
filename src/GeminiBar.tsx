@@ -58,6 +58,8 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
   const [toast, setToast] = useState<{ message: string; type: "success" | "error"; icon: string } | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState("")
+  const [audioLevel, setAudioLevel] = useState(0)
+  const [isVoiceDetected, setIsVoiceDetected] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -65,57 +67,430 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
   const voiceTranscriptRef = useRef("")  // Track current transcript
   const shouldSpeakResponseRef = useRef(false)  // Track if we should speak response
   const isRecordingIntentionallyRef = useRef(false)  // Track if user wants to keep recording
+  const isStartingRecognitionRef = useRef(false)
+  const manualStopRef = useRef(false)
+  const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const restartAttemptsRef = useRef(0)
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null)  // Track gTTS audio to prevent overlap
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([])           // Cached voices (loaded async)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const processorRef = useRef<ScriptProcessorNode | null>(null)
+  const audioFrameRef = useRef<number | null>(null)
+  const recordedChunksRef = useRef<Float32Array[]>([])
+  const recordedSampleRateRef = useRef(44100)
   const sessionId = useRef("")
+
+  function clearRestartTimeout() {
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current)
+      restartTimeoutRef.current = null
+    }
+  }
+
+  function stopRecognitionLoop() {
+    manualStopRef.current = true
+    isRecordingIntentionallyRef.current = false
+    isStartingRecognitionRef.current = false
+    restartAttemptsRef.current = 0
+    clearRestartTimeout()
+    setIsRecording(false)
+    stopAudioMonitor()
+    releaseMicrophone()
+  }
+
+  function getRecognitionLanguage() {
+    return navigator.languages?.find(Boolean) || navigator.language || "en-US"
+  }
+
+  function shouldUseBackendStt() {
+    return isElectronShell()
+  }
+
+  function isElectronShell() {
+    return navigator.userAgent.toLowerCase().includes("electron")
+  }
+
+  function stopAudioMonitor() {
+    if (audioFrameRef.current !== null) {
+      cancelAnimationFrame(audioFrameRef.current)
+      audioFrameRef.current = null
+    }
+
+    processorRef.current?.disconnect()
+    processorRef.current = null
+    audioSourceRef.current?.disconnect()
+    audioSourceRef.current = null
+    analyserRef.current = null
+
+    if (audioContextRef.current) {
+      void audioContextRef.current.close().catch(() => undefined)
+      audioContextRef.current = null
+    }
+
+    setAudioLevel(0)
+    setIsVoiceDetected(false)
+  }
+
+  function releaseMicrophone() {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+    mediaStreamRef.current = null
+  }
+
+  function mergeAudioChunks(chunks: Float32Array[]) {
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    const merged = new Float32Array(totalLength)
+    let offset = 0
+
+    for (const chunk of chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.length
+    }
+
+    return merged
+  }
+
+  function encodeWav(samples: Float32Array, sampleRate: number) {
+    const buffer = new ArrayBuffer(44 + samples.length * 2)
+    const view = new DataView(buffer)
+
+    const writeString = (offset: number, value: string) => {
+      for (let index = 0; index < value.length; index += 1) {
+        view.setUint8(offset + index, value.charCodeAt(index))
+      }
+    }
+
+    writeString(0, "RIFF")
+    view.setUint32(4, 36 + samples.length * 2, true)
+    writeString(8, "WAVE")
+    writeString(12, "fmt ")
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true)
+    view.setUint16(22, 1, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, sampleRate * 2, true)
+    view.setUint16(32, 2, true)
+    view.setUint16(34, 16, true)
+    writeString(36, "data")
+    view.setUint32(40, samples.length * 2, true)
+
+    let offset = 44
+    for (let index = 0; index < samples.length; index += 1) {
+      const sample = Math.max(-1, Math.min(1, samples[index]))
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+      offset += 2
+    }
+
+    return new Blob([buffer], { type: "audio/wav" })
+  }
+
+  async function transcribeRecordedAudio() {
+    const merged = mergeAudioChunks(recordedChunksRef.current)
+    recordedChunksRef.current = []
+
+    if (!merged.length) {
+      setToast({
+        message: "No speech captured — try again and speak closer to the microphone",
+        type: "error",
+        icon: "❌"
+      })
+      return ""
+    }
+
+    const audioBlob = encodeWav(merged, recordedSampleRateRef.current)
+    const formData = new FormData()
+    formData.append("audio", audioBlob, "speech.wav")
+
+    const response = await fetch(`${API}/api/stt?lang=${encodeURIComponent(getRecognitionLanguage())}`, {
+      method: "POST",
+      body: formData,
+    })
+    const payload = await response.json()
+
+    if (!response.ok || !payload.success || !payload.text) {
+      throw new Error(payload.error || "Speech transcription failed")
+    }
+
+    return String(payload.text).trim()
+  }
+
+  function startAudioMonitor(stream: MediaStream, captureForTranscription: boolean) {
+    stopAudioMonitor()
+
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContextCtor) return
+
+    const audioContext = new AudioContextCtor()
+    const analyser = audioContext.createAnalyser()
+    analyser.fftSize = 2048
+    analyser.smoothingTimeConstant = 0.85
+
+    const source = audioContext.createMediaStreamSource(stream)
+    audioSourceRef.current = source
+    source.connect(analyser)
+
+    const buffer = new Uint8Array(analyser.fftSize)
+
+    audioContextRef.current = audioContext
+    analyserRef.current = analyser
+    recordedSampleRateRef.current = audioContext.sampleRate
+    recordedChunksRef.current = []
+
+    if (captureForTranscription) {
+      const processor = audioContext.createScriptProcessor(4096, 1, 1)
+      processor.onaudioprocess = (event) => {
+        if (!isRecordingIntentionallyRef.current) return
+
+        const channelData = event.inputBuffer.getChannelData(0)
+        recordedChunksRef.current.push(new Float32Array(channelData))
+      }
+      source.connect(processor)
+      processor.connect(audioContext.destination)
+      processorRef.current = processor
+    }
+
+    const tick = () => {
+      if (!analyserRef.current) return
+
+      analyserRef.current.getByteTimeDomainData(buffer)
+
+      let sum = 0
+      for (let index = 0; index < buffer.length; index += 1) {
+        const normalized = (buffer[index] - 128) / 128
+        sum += normalized * normalized
+      }
+
+      const rms = Math.sqrt(sum / buffer.length)
+      const nextLevel = Math.min(rms * 6, 1)
+      setAudioLevel(nextLevel)
+      setIsVoiceDetected(nextLevel > 0.08)
+
+      audioFrameRef.current = requestAnimationFrame(tick)
+    }
+
+    audioFrameRef.current = requestAnimationFrame(tick)
+  }
+
+  async function ensureMicrophoneAccess() {
+    if (mediaStreamRef.current && mediaStreamRef.current.active) {
+      return mediaStreamRef.current
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) return null
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaStreamRef.current = stream
+    return stream
+  }
 
   useEffect(() => { sessionId.current = getSessionId(context) }, [context])
 
-  // Initialize Web Speech API
+  // Pre-load TTS voices (getVoices() is async on first call)
+  useEffect(() => {
+    function loadVoices() {
+      const v = speechSynthesis.getVoices()
+      if (v.length > 0) voicesRef.current = v
+    }
+    loadVoices()
+    speechSynthesis.onvoiceschanged = loadVoices
+    return () => { speechSynthesis.onvoiceschanged = null }
+  }, [])
+
+  // Initialize Web Speech API with professional quality settings
   useEffect(() => {
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
     if (SpeechRecognition) {
       const r = new SpeechRecognition()
-      r.continuous = true
-      r.interimResults = true
+      
+      // Professional speech recognition settings
+      r.continuous = true                     // Keep the session open while user is speaking
+      r.interimResults = true                 // Show live transcription while speaking
+      r.maxAlternatives = 1                   // Only need best result (faster, less noise)
+      r.lang = getRecognitionLanguage()       // Start with the browser locale for better local accuracy
+      
       r.onstart = () => {
+        isStartingRecognitionRef.current = false
+        restartAttemptsRef.current = 0
+        clearRestartTimeout()
         setIsRecording(true)
         isRecordingIntentionallyRef.current = true
+        console.log("🎤 Microphone started — listening...")
       }
+      
       r.onend = () => {
         setIsRecording(false)
-        // Auto-restart if user still wants to record (mic stopped due to silence)
-        if (isRecordingIntentionallyRef.current && recognitionRef.current) {
-          setTimeout(() => {
-            if (isRecordingIntentionallyRef.current) {
-              recognitionRef.current!.start()
-            }
-          }, 100)
-        }
+        isStartingRecognitionRef.current = false
+        console.log("🎤 Microphone stopped")
+
+        const shouldReconnect = isRecordingIntentionallyRef.current && !manualStopRef.current
+        if (!shouldReconnect) return
+
+        const attempt = restartAttemptsRef.current
+        const backoffMs = Math.min(500 + attempt * 500, 3000)
+        restartAttemptsRef.current = attempt + 1
+
+        clearRestartTimeout()
+        restartTimeoutRef.current = setTimeout(() => {
+          if (!recognitionRef.current || manualStopRef.current || !isRecordingIntentionallyRef.current) return
+          if (isStartingRecognitionRef.current || isRecording) return
+
+          try {
+            isStartingRecognitionRef.current = true
+            recognitionRef.current.lang = getRecognitionLanguage()
+            recognitionRef.current.start()
+            console.log(`🎤 Reconnecting microphone (attempt ${restartAttemptsRef.current})...`)
+          } catch (err) {
+            isStartingRecognitionRef.current = false
+            console.warn("Microphone reconnect ignored:", err)
+          }
+        }, backoffMs)
       }
+      
       r.onresult = (event: any) => {
         let transcript = ""
+        let isFinal = false
+        
+        // Collect all transcripts from result index
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const t = event.results[i][0].transcript
-          transcript += t
+          const result = event.results[i]
+          const text = result[0].transcript
+          transcript += text
+          
+          // Mark if this is a final result
+          if (result.isFinal) {
+            isFinal = true
+          }
         }
+        
+        // Clean up whitespace and capitalize
+        transcript = transcript.trim()
+        if (transcript) {
+          transcript = transcript.charAt(0).toUpperCase() + transcript.slice(1)
+        }
+        
         setVoiceTranscript(transcript)
         voiceTranscriptRef.current = transcript
+        
+        // Debug: log transcript quality
+        if (isFinal) {
+          console.log(`✅ Final transcript: "${transcript}"`)
+        } else {
+          console.log(`📝 Interim: "${transcript}"`)
+        }
       }
+      
+      r.onerror = (event: any) => {
+        isStartingRecognitionRef.current = false
+        console.error(`❌ Microphone error: ${event.error}`)
+        if (event.error === "network") {
+          stopRecognitionLoop()
+          setToast({
+            message: isElectronShell()
+              ? "Microphone ok, but speech transcription is unavailable in the Electron app. Test voice from Chrome or Edge on localhost:5173."
+              : "Speech service unavailable — check internet, then retry the microphone",
+            type: "error",
+            icon: "❌"
+          })
+        } else if (event.error === "no-speech") {
+          console.warn("No speech detected — make sure your microphone is working and not muted")
+        } else if (event.error === "audio-capture") {
+          stopRecognitionLoop()
+          setToast({
+            message: "No microphone input detected — check the selected device and mute state",
+            type: "error",
+            icon: "❌"
+          })
+        } else if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          stopRecognitionLoop()
+          setToast({
+            message: "Microphone permission denied — check browser settings",
+            type: "error",
+            icon: "❌"
+          })
+        }
+      }
+      
       recognitionRef.current = r
+    }
+
+    return () => {
+      clearRestartTimeout()
+      stopAudioMonitor()
+      releaseMicrophone()
     }
   }, [])
 
-  function startRecording() {
-    if (recognitionRef.current) {
-      isRecordingIntentionallyRef.current = true  // Mark: user wants to record
-      setVoiceTranscript("")
+  async function startRecording() {
+    const useBackendStt = shouldUseBackendStt()
+
+    if (!useBackendStt && !recognitionRef.current) {
+      setToast({
+        message: "Speech recognition is not available in this browser window",
+        type: "error",
+        icon: "❌"
+      })
+      return
+    }
+
+    if (isRecording || isStartingRecognitionRef.current) return
+
+    manualStopRef.current = false
+    isRecordingIntentionallyRef.current = true  // Mark: user wants to record
+    setVoiceTranscript("")
+    restartAttemptsRef.current = 0
+    clearRestartTimeout()
+
+    try {
+      const stream = await ensureMicrophoneAccess()
+      if (!stream) throw new Error("Microphone API unavailable")
+
+      startAudioMonitor(stream, useBackendStt)
+
+      if (useBackendStt) {
+        setIsRecording(true)
+        setToast({
+          message: "Recording in Electron — release the microphone button to transcribe",
+          type: "success",
+          icon: "🎤"
+        })
+        return
+      }
+
+      recognitionRef.current.lang = getRecognitionLanguage()
+      isStartingRecognitionRef.current = true
       recognitionRef.current.start()
+    } catch (err: any) {
+      stopRecognitionLoop()
+
+      const denied = err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError"
+      setToast({
+        message: denied
+          ? "Microphone permission denied — allow access and retry"
+          : "Unable to access the microphone — check the selected input device",
+        type: "error",
+        icon: "❌"
+      })
+      console.warn("Microphone start failed:", err)
     }
   }
 
-  function stopRecording() {
+  async function stopRecording() {
+    const useBackendStt = shouldUseBackendStt()
+
+    manualStopRef.current = true
     isRecordingIntentionallyRef.current = false  // Mark: stop recording
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
+    isStartingRecognitionRef.current = false
+    restartAttemptsRef.current = 0
+    clearRestartTimeout()
+
+    if (!useBackendStt && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch (err) {
+        console.warn("Microphone stop ignored:", err)
+      }
       // Send the captured transcript when user releases button
       const transcript = voiceTranscriptRef.current.trim()
       if (transcript) {
@@ -125,23 +500,79 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
         setVoiceTranscript("")
       }
     }
+
+    if (useBackendStt) {
+      setIsRecording(false)
+      setVoiceTranscript("Transcribing...")
+
+      try {
+        const transcript = await transcribeRecordedAudio()
+        if (transcript) {
+          const normalizedTranscript = transcript.charAt(0).toUpperCase() + transcript.slice(1)
+          voiceTranscriptRef.current = normalizedTranscript
+          setVoiceTranscript(normalizedTranscript)
+          shouldSpeakResponseRef.current = true
+          await send(normalizedTranscript)
+          voiceTranscriptRef.current = ""
+          setVoiceTranscript("")
+        }
+      } catch (err: any) {
+        setToast({
+          message: err?.message || "Speech transcription failed in Electron",
+          type: "error",
+          icon: "❌"
+        })
+        console.warn("Electron transcription failed:", err)
+      }
+    }
+
+    stopAudioMonitor()
+    releaseMicrophone()
   }
 
   function speakResponse(text: string) {
-    // Detect dominant language
+    // Stop any ongoing speech before starting a new one (prevents double-click overlap)
+    speechSynthesis.cancel()
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause()
+      currentAudioRef.current.currentTime = 0
+      currentAudioRef.current = null
+    }
+
+    // Detect language more robustly
     const arabicCount = (text.match(/[\u0600-\u06FF]/g) || []).length
-    const frenchCount = (text.match(/[àâäçèéêëîïôöùûüœæ]/gi) || []).length
     
+    // Comprehensive English word list (common words + productivity domain)
+    const EN_WORDS = /\b(the|a|an|and|or|but|is|are|was|were|been|be|have|has|had|do|does|did|will|would|should|could|can|may|might|must|i|you|he|she|it|we|they|me|him|her|us|them|my|your|his|her|its|our|their|this|that|these|those|what|which|who|whom|where|when|why|how|with|from|to|of|in|on|at|by|for|as|about|into|through|after|before|between|up|down|out|off|over|under|above|below|task|tasks|event|events|meeting|meetings|call|calls|calendar|schedule|scheduled|done|completed|todo|focus|session|added|deleted|created|updated|marked|reminder|reminders|tomorrow|today|yesterday|week|month|year|time|date|minute|hour|morning|afternoon|evening|night)\b/gi
+    
+    // Comprehensive French word list
+    const FR_WORDS = /\b(je|tu|il|elle|on|nous|vous|ils|elles|le|la|les|de|du|des|un|une|et|ou|mais|est|sont|a|ont|avoir|etre|with|pour|sur|dans|par|qui|que|quoi|où|quand|comment|pourquoi|bonjour|salut|merci|s'il vous plaît|oui|non|très|bien|aussi|donc|puis|ensuite|voici|voilà|j'ai|c'est|n'est|qu'il|qu'elle|tâche|tâches|événement|réunion|calendrier|agenda|ajouté|supprimé|créé|terminé|fait|en cours|réunion|rendez|rdv)\b/gi
+
+    const frScore = (text.match(FR_WORDS) || []).length
+    const enScore = (text.match(EN_WORDS) || []).length
+
+    // Debug log pour vérifier la détection
+    console.log(`TTS Language detection: EN=${enScore}, FR=${frScore}, Arabic=${arabicCount}`)
+
     let detectedLang = "en-US"
     if (arabicCount > 2) {
       detectedLang = "ar-SA"
-    } else if (frenchCount > 2 || text.match(/bonjour|salut|coucou|alors|très|merci|s'il|qu'est|c'est|ça|été/i)) {
+    } else if (frScore > 0 && enScore === 0) {
+      // Si du français et pas d'anglais → français
       detectedLang = "fr-FR"
+    } else if (frScore > 0 && enScore > 0) {
+      // Si mélange → utiliser le ratio
+      if (frScore / enScore > 1.2) {
+        // 20% plus de français → français
+        detectedLang = "fr-FR"
+      }
+      // Sinon reste anglais par défaut
     }
+    // Default to English if ambiguous or empty
 
     // For Arabic, skip Web Speech and go straight to gTTS (Windows rarely has Arabic voice)
     if (detectedLang === "ar-SA") {
-      console.log("Detected Arabic - using gTTS for better support")
+      console.log("🔊 TTS: Detected Arabic — using gTTS fallback")
       useFallbackTTS(text, "ar")
       return
     }
@@ -156,18 +587,35 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
       try {
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = detectedLang
-        
-        // Tune pitch & rate per language
+
+        // Use pre-cached voices (avoids empty array on first call)
+        const allVoices = voicesRef.current.length > 0
+          ? voicesRef.current
+          : speechSynthesis.getVoices()
+
         if (detectedLang === "fr-FR") {
+          const frVoice = allVoices.find(v => v.lang.startsWith("fr") && v.localService)
+                       || allVoices.find(v => v.lang.startsWith("fr"))
+          if (frVoice) utterance.voice = frVoice
           utterance.pitch = 1.4
           utterance.rate = 0.85
+          console.log(`🔊 TTS: Speaking French — voice: ${utterance.voice?.name ?? "system default"}`)
         } else {
-          utterance.pitch = 1.1
-          utterance.rate = 0.9   // More natural for English
+          // Force a real English voice — prefer en-US or en-GB native
+          const enVoice = allVoices.find(v => v.lang === "en-US" && v.localService)
+                       || allVoices.find(v => v.lang === "en-GB" && v.localService)
+                       || allVoices.find(v => v.lang.startsWith("en-") && v.localService)
+                       || allVoices.find(v => v.lang.startsWith("en"))
+          if (enVoice) {
+            utterance.voice = enVoice
+            utterance.lang  = enVoice.lang
+          }
+          utterance.pitch = 1.0
+          utterance.rate  = 0.95
+          console.log(`🔊 TTS: Speaking English — voice: ${utterance.voice?.name ?? "system default"}`)
         }
-        
+
         speechSynthesis.speak(utterance)
-        console.log(`Speaking in ${detectedLang}`)
         return
       } catch (e) {
         console.warn("Web Speech API failed, trying gTTS fallback", e)
@@ -181,6 +629,12 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
 
   function useFallbackTTS(text: string, lang: string) {
     try {
+      // Stop previous gTTS audio if still playing
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause()
+        currentAudioRef.current.currentTime = 0
+        currentAudioRef.current = null
+      }
       fetch(`${API}/api/tts?text=${encodeURIComponent(text)}&lang=${lang}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" }
@@ -189,6 +643,8 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
         .then(data => {
           if (data.audio_base64) {
             const audio = new Audio(`data:audio/mp3;base64,${data.audio_base64}`)
+            currentAudioRef.current = audio
+            audio.onended = () => { currentAudioRef.current = null }
             audio.play().catch(e => console.error("gTTS playback failed", e))
             console.log(`gTTS playing: ${lang}`)
           }
@@ -345,9 +801,68 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
         
         {/* Voix ou texte */}
         {isRecording ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "#ef4444", fontWeight: 600, animation: "pulse 1s infinite" }}>🎤 Recording...</span>
-            <span style={{ color: "#64748b", fontSize: 13 }}>{voiceTranscript || "Listening..."}</span>
+          <div style={{ 
+            flex: 1, 
+            display: "flex", 
+            alignItems: "center", 
+            gap: 12,
+            padding: "8px 14px",
+            background: "#fef2f2",
+            borderRadius: 7,
+            border: "1px solid #fecaca",
+            animation: "slideIn 0.3s ease-out"
+          }}>
+            {/* Animated microphone indicator with waveform effect */}
+            <div style={{ 
+              fontSize: 18, 
+              animation: "micPulse 1.5s ease-in-out infinite",
+              display: "flex",
+              flexShrink: 0
+            }}>
+              🎤
+            </div>
+            
+            {/* Transcript text with live update */}
+            <div style={{ flex: 1 }}>
+              <div style={{ 
+                fontSize: 13, 
+                color: "#1e293b",
+                fontWeight: 500,
+                lineHeight: "1.4",
+                maxHeight: 40,
+                overflow: "hidden",
+                textOverflow: "ellipsis"
+              }}>
+                {voiceTranscript || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>{isVoiceDetected ? "Voice detected..." : "Listening..."}</span>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                <div style={{
+                  flex: 1,
+                  height: 6,
+                  borderRadius: 999,
+                  background: "#fee2e2",
+                  overflow: "hidden",
+                }}>
+                  <div style={{
+                    width: `${Math.max(audioLevel * 100, 4)}%`,
+                    height: "100%",
+                    borderRadius: 999,
+                    background: isVoiceDetected
+                      ? "linear-gradient(90deg, #ef4444, #f97316)"
+                      : "linear-gradient(90deg, #fda4af, #fecaca)",
+                    transition: "width 80ms linear, background 160ms ease",
+                  }} />
+                </div>
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: isVoiceDetected ? "#b91c1c" : "#94a3b8",
+                  whiteSpace: "nowrap",
+                }}>
+                  {isVoiceDetected ? "Voice detected" : "Waiting for voice"}
+                </span>
+              </div>
+            </div>
           </div>
         ) : (
           <input
@@ -364,21 +879,40 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
 
         {/* Boutons d'action */}
         <div style={{ display: "flex", gap: 6 }}>
-          {/* Bouton Voix */}
+          {/* Bouton Voix - Professional design */}
           <button
             onClick={isRecording ? stopRecording : startRecording}
             style={{
-              border: "none", borderRadius: 7, padding: "5px 10px",
-              background: isRecording ? "#ef4444" : `${color}22`,
-              color: isRecording ? "#fff" : color,
-              fontSize: 14,
+              border: "none",
+              borderRadius: 8,
+              padding: isRecording ? "8px 12px" : "8px 12px",
+              background: isRecording 
+                ? "linear-gradient(135deg, #ef4444, #dc2626)" 
+                : `linear-gradient(135deg, ${color}99, ${color}cc)`,
+              color: "#fff",
+              fontSize: isRecording ? 16 : 14,
               cursor: "pointer",
               fontWeight: 700,
-              transition: "all 0.2s",
+              transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+              boxShadow: isRecording 
+                ? "0 4px 12px rgba(239, 68, 68, 0.3)"
+                : "0 2px 6px rgba(0, 0, 0, 0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minWidth: 44,
+              height: 44,
+              whiteSpace: "nowrap",
             }}
-            title="Voice input"
+            title={isRecording ? "Stop recording (Enter)" : "Start recording (hold or click)"}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "scale(1.05)"
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "scale(1)"
+            }}
           >
-            {isRecording ? "⏹️" : "🎤"}
+            {isRecording ? "⏹️ Stop" : "🎤"}
           </button>
 
           {/* Bouton Envoyer */}

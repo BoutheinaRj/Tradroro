@@ -77,13 +77,16 @@ export const DATA: CategoryMap = {
   },
 
   comp: {
-    name: "Personal Companion",
+    name: "Compagnon Personnel",
     icon: "❤️",
     items: [
-      { cmd: "How are you today?", res: "😊 I'm doing great! Ready for a productive day?" },
-      { cmd: "Motivation to finish this project!", res: "💪 You're so close to the finish line, I believe in you 🚀" },
-      { cmd: "Tell me a joke", res: "😄 Why do developers hate nature? Too many bugs!" },
-      { cmd: "Relax mode", res: "🌊 Relax mode activated. Soft light, breathe..." },
+      { cmd: "Salut Nova, comment tu vas ?", res: "Je vais bien, et toi ?" },
+      { cmd: "Hey Nova, I feel stressed today", res: "Take a breath, we can handle this step by step." },
+      { cmd: "J'ai besoin de motivation pour finir mon projet", res: "Tu avances vraiment bien, continue comme ca." },
+      { cmd: "Can you give me a quick motivation boost?", res: "You have got this, one step now and momentum follows." },
+      { cmd: "Raconte-moi une blague", res: "Promis, cette fois elle est drole." },
+      { cmd: "Tell me a short joke", res: "Why do developers carry glasses? Because they cannot C clearly." },
+      { cmd: "Je suis stresse, aide-moi a me calmer", res: "Respire doucement, on y va etape par etape." },
     ],
   },
 }

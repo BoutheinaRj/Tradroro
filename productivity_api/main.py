@@ -1,7 +1,7 @@
 import re
 import json
 from datetime import datetime, timedelta
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -60,6 +60,8 @@ class ExecuteIn(BaseModel):
 
 from nlp import parse_command
 from gemini_understanding import understand_command, get_gemini_status, clear_session
+from nova_companion import chat_with_nova
+from desktop_control import execute_desktop_command
 
 # ----- Helpers de sérialisation -----
 _PRIORITY_LABELS = {1: "low", 2: "minor", 3: "normal", 4: "important", 5: "urgent"}
@@ -876,6 +878,37 @@ def chat(body: ExecuteIn):
     }
 
 
+@app.post("/api/chat/companion")
+def chat_companion(body: ExecuteIn):
+    """Free conversation mode (Nova): no action parsing, plain text reply."""
+    result = chat_with_nova(body.text, session_id=(body.session_id or None))
+    return {
+        "input": body.text,
+        "context": "companion",
+        "session_id": result.get("session_id", ""),
+        "reply": result.get("reply", ""),
+        "emotion": result.get("emotion", "neutre"),
+        "lang": result.get("lang", "en"),
+        "source": result.get("source", "unknown"),
+    }
+
+
+@app.post("/api/desktop/control")
+def desktop_control(body: ExecuteIn):
+    """Desktop control mode (Gemini): understand any desktop command."""
+    result = execute_desktop_command(body.text)
+    return {
+        "input": body.text,
+        "context": "desktop",
+        "message": result.get("message", ""),
+        "understood": result.get("understood", False),
+        "command_type": result.get("command_type", "unknown"),
+        "success": result.get("success", False),
+        "details": result.get("details", ""),
+        "source": result.get("source", "unknown"),
+    }
+
+
 @app.get("/gemini/status")
 def gemini_status():
     """Retourne le statut de la configuration Gemini."""
@@ -935,4 +968,58 @@ async def text_to_speech(text: str = None, lang: str = "fr"):
             "success": False,
             "error": f"TTS failed: {str(e)}",
             "hint": "Install with: pip install gTTS"
+        }
+
+
+@app.post("/api/stt")
+async def speech_to_text(audio: UploadFile = File(...), lang: str = "en-US"):
+    """
+    Transcribe un fichier WAV depuis le frontend via SpeechRecognition + Google Web Speech.
+    """
+    if not audio.filename:
+        return {"success": False, "error": "Audio file is required."}
+
+    content_type = (audio.content_type or "").lower()
+    if content_type and content_type not in {"audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave", "application/octet-stream"}:
+        return {
+            "success": False,
+            "error": f"Unsupported audio type: {content_type}",
+            "hint": "Send a WAV audio blob from the frontend."
+        }
+
+    try:
+        import io
+        import speech_recognition as sr
+
+        payload = await audio.read()
+        if not payload:
+            return {"success": False, "error": "Empty audio payload."}
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(io.BytesIO(payload)) as source:
+            audio_data = recognizer.record(source)
+
+        transcript = recognizer.recognize_google(audio_data, language=lang).strip()
+        return {
+            "success": True,
+            "text": transcript,
+            "lang": lang,
+        }
+    except sr.UnknownValueError:
+        return {
+            "success": False,
+            "error": "No speech could be understood from the recording.",
+            "code": "NO_SPEECH",
+        }
+    except sr.RequestError as exc:
+        return {
+            "success": False,
+            "error": f"Speech transcription service failed: {exc}",
+            "code": "SERVICE_UNAVAILABLE",
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Speech transcription failed: {exc}",
+            "code": "STT_ERROR",
         }

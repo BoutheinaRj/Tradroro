@@ -445,7 +445,7 @@ const welcome: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 800,
     letterSpacing: 1.2,
-    color: "#0d9488",
+    color: "#0D3194",
     display: "block",
   },
   commandHint: {

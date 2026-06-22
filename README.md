@@ -46,23 +46,69 @@ tradrly-bot-react-ts/
 
 ---
 
-## ▶️ Lancer le projet (dans VS Code)
+## ▶️ Lancer le projet
 
-Pré-requis : **Node.js 18+** installé.
+### Pré-requis
+- **Node.js 18+** installé
+- **Python 3.9+** installé (pour le backend NLP/API)
+
+### 1️⃣ Installation des dépendances
 
 ```bash
-# 1. Ouvrir le dossier dans VS Code, puis dans le terminal :
-npm install      # installe React, TypeScript, Vite
-npm run dev      # lance le serveur de développement
+# Frontend (React + TypeScript + Vite)
+npm install
+
+# Backend (Python NLP API)
+cd productivity_api
+pip install -r requirements.txt
+cd ..
 ```
 
-Ouvrez ensuite l'adresse affichée (par défaut **http://localhost:5173**).
+### 2️⃣ Modes de lancement
 
-Pour générer la version de production :
+#### 🌐 Frontend uniquement (Vite dev server)
 ```bash
-npm run build    # vérifie les types (tsc) + build dans /dist
-npm run preview  # prévisualise le build
+npm run dev
+# Accès : http://localhost:5173
 ```
+
+#### 🌐 + 🔧 Frontend + Serveur backend Node.js
+```bash
+npm run dev:full
+# Frontend : http://localhost:5173
+# Backend  : http://localhost:3001
+```
+
+#### 🖥️ Frontend + Backend + Electron (Application desktop)
+```bash
+npm run electron:dev
+# Lance Electron qui charge l'interface depuis http://localhost:5173
+```
+
+#### 📦 Build pour production
+```bash
+npm run build      # Compile TypeScript + Vite, génère /dist
+npm run preview    # Prévisualise le build
+npm run electron:build  # Construit l'exécutable Electron (.exe)
+```
+
+---
+
+## 📋 Commandes npm disponibles
+
+| Commande | Description |
+|----------|-------------|
+| `npm run dev` | Vite dev server (frontend) |
+| `npm run server` | Serveur Node.js seul (port 3001) |
+| `npm run dev:full` | Frontend + backend en parallèle |
+| `npm run electron:dev` | Frontend + backend + Electron |
+| `npm run build` | Compile et build optimisé |
+| `npm run preview` | Prévisualise le build |
+| `npm run electron:build` | Build Electron (.exe) |
+| `npm run electron:preview` | Lance le build Electron |
+------------------------
+Pou Lancer l'API Python en parallèle. D'abord, je vais activer l'environnement Python et démarrer le serveur FastAPI :
+cd c:\Users\LENOVO\Downloads\tradrly-bot-react-ts\tradrly-bot-react-ts\productivity_api; .\..\..\.venv\Scripts\Activate.ps1; uvicorn main:app --reload --port 8000
 
 ---
 

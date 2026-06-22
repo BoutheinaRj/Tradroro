@@ -184,12 +184,61 @@ export default function CalendarView({ back }: { back: () => void }) {
     }
   }
 
-  const calendarEvents = events.map((ev) => ({
+  const EVENT_COLORS = [
+    { bg: "#dbeafe", border: "#2563eb", text: "#1e40af" },
+    { bg: "#e0f2fe", border: "#0284c7", text: "#075985" },
+    { bg: "#ede9fe", border: "#7c3aed", text: "#5b21b6" },
+    { bg: "#d1fae5", border: "#059669", text: "#065f46" },
+    { bg: "#fef3c7", border: "#d97706", text: "#92400e" },
+    { bg: "#fee2e2", border: "#dc2626", text: "#991b1b" },
+    { bg: "#cffafe", border: "#0891b2", text: "#164e63" },
+  ]
+
+  const calendarEvents = events.map((ev, i) => ({
     id: String(ev.id),
     title: ev.title,
     start: ev.start_at,
     end: ev.end_at ?? undefined,
+    extendedProps: { colorIdx: i % EVENT_COLORS.length },
   }))
+
+  function renderEventContent(info: any) {
+    const idx  = info.event.extendedProps.colorIdx as number
+    const col  = EVENT_COLORS[idx]
+    const isTimeGrid = info.view.type.startsWith("timeGrid")
+    return (
+      <div style={{
+        background: col.bg,
+        borderLeft: `4px solid ${col.border}`,
+        borderRadius: "0 6px 6px 0",
+        padding: isTimeGrid ? "4px 8px" : "2px 6px",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        gap: 1,
+        boxSizing: "border-box",
+      }}>
+        {info.timeText && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: col.border, letterSpacing: "0.03em" }}>
+            {info.timeText}
+          </span>
+        )}
+        <span style={{
+          fontSize: isTimeGrid ? 12 : 11,
+          fontWeight: 700,
+          color: col.text,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: isTimeGrid ? "normal" : "nowrap",
+          lineHeight: 1.3,
+        }}>
+          {info.event.title}
+        </span>
+      </div>
+    )
+  }
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "—"
@@ -245,28 +294,79 @@ export default function CalendarView({ back }: { back: () => void }) {
           <div className="fc-dark">
             <FullCalendar
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-              initialView="dayGridMonth"
+              initialView="timeGridWeek"
               headerToolbar={headerToolbar}
-              height="auto"
+              height={600}
               events={calendarEvents}
+              eventContent={renderEventContent}
+              eventMinHeight={40}
+              dayMaxEvents={4}
+              slotMinTime="07:00:00"
+              slotMaxTime="22:00:00"
+              allDayText="All day"
+              nowIndicator={true}
+              moreLinkContent={(args) => `+${args.num} more`}
             />
           </div>
         </section>
 
-        {/* Event list */}
+        {/* Upcoming Events list */}
         <section style={styles.card}>
-          <h3 style={styles.cardTitle}>📋 Event List ({events.length})</h3>
-          <div style={styles.list}>
+          <h3 style={styles.cardTitle}>🗓 Upcoming Events</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {events.length === 0 ? (
-              <p style={styles.empty}>No events yet.</p>
+              <p style={styles.empty}>No events yet. Try: "Schedule meeting tomorrow 10am"</p>
             ) : (
-              events.map((ev) => (
-                <div key={ev.id} style={styles.row}>
-                  <span style={styles.rowId}>#{ev.id}</span>
-                  <span style={styles.rowTitle}>{ev.title}</span>
-                  <span style={styles.rowDate}>{formatDate(ev.start_at)}</span>
-                </div>
-              ))
+              [...events]
+                .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
+                .map((ev, i) => {
+                  const col = EVENT_COLORS[i % EVENT_COLORS.length]
+                  const dt  = new Date(ev.start_at)
+                  const isToday = dt.toDateString() === new Date().toDateString()
+                  const isPast  = dt < new Date()
+                  return (
+                    <div key={ev.id} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 14,
+                      padding: "12px 16px",
+                      background: isPast ? "#f8fafc" : col.bg,
+                      borderLeft: `5px solid ${isPast ? "#cbd5e1" : col.border}`,
+                      borderRadius: "0 10px 10px 0",
+                      opacity: isPast ? 0.6 : 1,
+                      boxShadow: isPast ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
+                    }}>
+                      <div style={{ flexShrink: 0, textAlign: "center", minWidth: 42 }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: isPast ? "#94a3b8" : col.border, lineHeight: 1 }}>
+                          {String(dt.getDate()).padStart(2, "0")}
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          {dt.toLocaleString("en", { month: "short" })}
+                        </div>
+                      </div>
+                      <div style={{ width: 1, height: 36, background: isPast ? "#e2e8f0" : col.border, opacity: 0.3 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: isPast ? "#64748b" : col.text,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {ev.title}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                          {dt.toLocaleString("en-US", { weekday: "short", hour: "2-digit", minute: "2-digit" })}
+                          {ev.end_at && ` → ${new Date(ev.end_at).toLocaleString("en-US", { hour: "2-digit", minute: "2-digit" })}`}
+                        </div>
+                      </div>
+                      {isToday && (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#fff",
+                          background: col.border, borderRadius: 999, padding: "3px 8px", flexShrink: 0 }}>
+                          TODAY
+                        </span>
+                      )}
+                      {isPast && (
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8", flexShrink: 0 }}>Done</span>
+                      )}
+                    </div>
+                  )
+                })
             )}
           </div>
         </section>
@@ -275,59 +375,84 @@ export default function CalendarView({ back }: { back: () => void }) {
   )
 }
 
-// ---- Thème sombre pour FullCalendar ----
+// ---- Thème FullCalendar pro (Google Calendar style) ----
 const fcTheme = `
 .fc-dark {
-  --fc-border-color: #e2e8f4;
+  --fc-border-color: #e8edf5;
   --fc-page-bg-color: transparent;
   --fc-neutral-bg-color: #f8faff;
-  --fc-today-bg-color: #eff4ff;
+  --fc-today-bg-color: #eff6ff;
+  --fc-now-indicator-color: #ef4444;
   color: #1e293b;
 }
 .fc-dark .fc {
   font-family: Inter, system-ui, sans-serif;
 }
 .fc-dark .fc-toolbar-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: #1e293b;
 }
-.fc-dark .fc-col-header-cell-cushion,
-.fc-dark .fc-daygrid-day-number {
+.fc-dark .fc-col-header-cell {
+  background: #f8faff;
+  padding: 8px 0;
+  border-bottom: 2px solid #e8edf5;
+}
+.fc-dark .fc-col-header-cell-cushion {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.fc-dark .fc-daygrid-day-number,
+.fc-dark .fc-timegrid-slot-label-cushion {
   color: #64748b;
+  font-size: 12px;
   text-decoration: none;
 }
 .fc-dark .fc-button {
-  background: #ffffff;
-  border: 1px solid #c7d9fc;
+  background: #fff;
+  border: 1.5px solid #dbeafe;
   color: #2563eb;
   text-transform: capitalize;
   font-weight: 600;
+  font-size: 13px;
   box-shadow: none;
+  border-radius: 8px !important;
+  padding: 5px 12px;
 }
-.fc-dark .fc-button:hover {
-  background: #eff4ff;
-}
+.fc-dark .fc-button:hover { background: #eff6ff; }
 .fc-dark .fc-button-primary:not(:disabled).fc-button-active,
 .fc-dark .fc-button-primary:not(:disabled):active {
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
-  border-color: transparent;
+  background: #2563eb;
+  border-color: #2563eb;
   color: #fff;
 }
 .fc-dark .fc-event {
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
-  border: none;
-  color: #fff;
-  font-weight: 600;
-  padding: 1px 4px;
-  border-radius: 5px;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none;
+  cursor: pointer;
 }
-.fc-dark .fc-daygrid-day.fc-day-today {
-  background: #eff4ff;
+.fc-dark .fc-event:hover > div {
+  filter: brightness(0.95);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
-.fc-dark a {
-  color: inherit;
+.fc-dark .fc-daygrid-event { margin: 2px 2px; }
+.fc-dark .fc-timegrid-event { border-radius: 0 8px 8px 0 !important; }
+.fc-dark .fc-event-main { padding: 0 !important; }
+.fc-dark .fc-more-link {
+  font-size: 11px; font-weight: 700;
+  color: #2563eb; padding: 2px 6px;
+  border-radius: 4px; background: #eff6ff;
 }
+.fc-dark .fc-daygrid-day.fc-day-today { background: #eff6ff; }
+.fc-dark .fc-timegrid-now-indicator-line { border-color: #ef4444; border-width: 2px; }
+.fc-dark .fc-timegrid-now-indicator-arrow { border-top-color: #ef4444; border-bottom-color: #ef4444; }
+.fc-dark a { color: inherit; }
+.fc-dark .fc-scrollgrid { border-radius: 12px; overflow: hidden; }
 `
 
 // ---- Styles statiques ----

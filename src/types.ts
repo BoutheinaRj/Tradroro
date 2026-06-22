@@ -26,4 +26,5 @@ export type CategoryMap = Record<CategoryKey, Category>
 export interface ChatMessage {
   who: "bot" | "user"
   text: string
+  emotion?: "neutral" | "positive" | "negative" | "stressed" | "calm" | "happy"
 }
