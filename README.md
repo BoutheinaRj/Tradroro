@@ -1,6 +1,6 @@
 # 🚀 Tradroro – Assistant de productivité IA
 
-Module de productivité de bureau, développé en 2 semaines au début de mon stage d'été chez **Tradrly**, avec un assistant IA intégré : **NOVA**.
+Module de productivité de bureau, développé en 3 semaines au début de mon stage d'été chez **Tradrly**, avec un assistant IA intégré : **NOVA**.
 
 Gérez vos tâches, votre agenda et vos sessions de concentration en parlant ou en écrivant naturellement :
 
