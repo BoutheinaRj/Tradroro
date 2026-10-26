@@ -215,7 +215,7 @@ export default function App() {
         sum += normalized * normalized
       }
       const rms = Math.sqrt(sum / buffer.length)
-      setStatus(rms > 0.08 ? "🎙️ Voice detected..." : "🎙️ Listening...")
+      setStatus(rms > 0.08 ? "🎙️ Voix détectée…" : "🎙️ À l'écoute…")
       audioFrameRef.current = requestAnimationFrame(tick)
     }
 
@@ -332,7 +332,7 @@ export default function App() {
       setIsListening(true)
       stopRequestedRef.current = false
       transcriptRef.current = ""
-      setStatus("🎙️ Listening...")
+      setStatus("🎙️ À l'écoute…")
     }
 
     recognition.onresult = (event: any) => {
@@ -380,7 +380,7 @@ export default function App() {
   setMsgs((m) => [...m, { who: "user", text }]);
   setVal("");
   setTyping(true);
-  setStatus("Typing...");
+  setStatus("En train d'écrire…");
 
   const isCompanion = cat === "comp"
   const isDesktop = cat === "desktop"
@@ -461,7 +461,7 @@ export default function App() {
 }
   async function mic() {
     if (cat !== "comp" && cat !== "desktop") {
-      setStatus("🎙️ Listening...")
+      setStatus("🎙️ À l'écoute…")
       const items = DATA[cat].items
       const ex = items[Math.floor(Math.random() * items.length)]
       window.setTimeout(() => send(ex.cmd), 700)
@@ -471,7 +471,7 @@ export default function App() {
     if (isElectronShell()) {
       if (isListening) {
         setIsListening(false)
-        setStatus("Transcribing...")
+        setStatus("Transcription…")
         clearAudioCapture()
 
         try {
@@ -484,7 +484,7 @@ export default function App() {
           }
         } catch (err) {
           console.warn("Electron companion transcription failed:", err)
-          setStatus("Transcription unavailable")
+          setStatus("Transcription indisponible")
         }
         return
       }
@@ -493,17 +493,17 @@ export default function App() {
         const stream = await ensureMicrophoneAccess()
         setIsListening(true)
         transcriptRef.current = ""
-        setStatus("🎙️ Listening...")
+        setStatus("🎙️ À l'écoute…")
         startElectronAudioCapture(stream)
       } catch (err) {
         console.warn("Electron companion microphone failed:", err)
-        setStatus("Micro unavailable")
+        setStatus("Micro indisponible")
       }
       return
     }
 
     if (!recognitionRef.current) {
-      setStatus("Micro unavailable")
+      setStatus("Micro indisponible")
       return
     }
 
