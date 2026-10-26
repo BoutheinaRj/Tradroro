@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState } from "react"
-import type { CSSProperties } from "react"
+import AutoAwesomeRounded from "@mui/icons-material/AutoAwesomeRounded"
+import EventRounded from "@mui/icons-material/EventRounded"
+import NotificationsActiveRounded from "@mui/icons-material/NotificationsActiveRounded"
+import NotificationsOffRounded from "@mui/icons-material/NotificationsOffRounded"
 import GeminiBar from "./GeminiBar"
+import { Empty, PageHeader } from "./ui"
+import { EventRow } from "./ProductivityHome"
+import type { EventItem } from "./models"
 import FullCalendar from "@fullcalendar/react"
 import dayGridPlugin from "@fullcalendar/daygrid"
 import timeGridPlugin from "@fullcalendar/timegrid"
 import interactionPlugin from "@fullcalendar/interaction"
+import frLocale from "@fullcalendar/core/locales/fr"
 
 const API = "http://localhost:8000"
 // Alertes 5 minutes avant l'événement
 const ALERT_BEFORE_MS = 5 * 60 * 1000
-
-type EventItem = {
-  id: number
-  title: string
-  start_at: string
-  end_at?: string | null
-}
 
 const headerToolbar = {
   left: "prev,next today",
@@ -23,7 +23,7 @@ const headerToolbar = {
   right: "dayGridMonth,timeGridWeek,timeGridDay",
 }
 
-export default function CalendarView({ back }: { back: () => void }) {
+export default function CalendarView() {
   const [events, setEvents] = useState<EventItem[]>([])
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>("default")
   // Set d'IDs déjà alertés pour éviter les doublons
@@ -83,9 +83,9 @@ export default function CalendarView({ back }: { back: () => void }) {
 
             // Notification navigateur
             if ("Notification" in window && Notification.permission === "granted") {
-              new Notification("📅 TRADRLY — Rappel événement", {
+              new Notification("📅 Tradroro — Rappel événement", {
                 body: msg,
-                icon: "/favicon.ico",
+                icon: "/favicon.svg",
                 tag: `event-${ev.id}`,
               })
             }
@@ -185,13 +185,11 @@ export default function CalendarView({ back }: { back: () => void }) {
   }
 
   const EVENT_COLORS = [
-    { bg: "#dbeafe", border: "#2563eb", text: "#1e40af" },
-    { bg: "#e0f2fe", border: "#0284c7", text: "#075985" },
-    { bg: "#ede9fe", border: "#7c3aed", text: "#5b21b6" },
-    { bg: "#d1fae5", border: "#059669", text: "#065f46" },
-    { bg: "#fef3c7", border: "#d97706", text: "#92400e" },
-    { bg: "#fee2e2", border: "#dc2626", text: "#991b1b" },
-    { bg: "#cffafe", border: "#0891b2", text: "#164e63" },
+    { bg: "#fff0ed", border: "#f2645a", text: "#b8372e" },
+    { bg: "#efeaff", border: "#8a6ff0", text: "#5a3fc0" },
+    { bg: "#e3f6ec", border: "#2fa36b", text: "#1d6f48" },
+    { bg: "#fff4dc", border: "#f0a020", text: "#9a6207" },
+    { bg: "#e6efff", border: "#4f86e8", text: "#2a5bb5" },
   ]
 
   const calendarEvents = events.map((ev, i) => ({
@@ -210,7 +208,7 @@ export default function CalendarView({ back }: { back: () => void }) {
       <div style={{
         background: col.bg,
         borderLeft: `4px solid ${col.border}`,
-        borderRadius: "0 6px 6px 0",
+        borderRadius: "0 10px 10px 0",
         padding: isTimeGrid ? "4px 8px" : "2px 6px",
         width: "100%",
         height: "100%",
@@ -240,360 +238,123 @@ export default function CalendarView({ back }: { back: () => void }) {
     )
   }
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return "—"
-    const dt = new Date(dateStr)
-    if (Number.isNaN(dt.getTime())) return "—"
-    return dt.toLocaleString("en-US", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
+  const upcoming = [...events].sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
 
   return (
-    <div style={styles.page}>
+    <div className="page">
       <style>{fcTheme}</style>
-      <div style={styles.shell}>
 
-        {/* Toast alarme */}
-        {toast && (
-          <div style={styles.toast}>{toast}</div>
-        )}
+      {/* Toast alarme */}
+      {toast && <div className="toast">{toast}</div>}
 
-        <header style={styles.header}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button style={styles.backBtn} onClick={back}>← Back</button>
-            <div>
-              <h2 style={styles.title}>📅 Calendar</h2>
-              <p style={styles.subtitle}>{events.length} événement{events.length !== 1 ? "s" : ""}</p>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={styles.badge}>{events.length} Events</span>
-            {notifPerm !== "granted" && (
-              <button style={styles.notifBtn} onClick={requestNotifPermission}>
-                {notifPerm === "denied" ? "🔕 Bloquées" : "🔔 Activer alertes"}
-              </button>
-            )}
-            {notifPerm === "granted" && (
-              <span style={styles.notifActive}>🔔 Alertes actives</span>
-            )}
-          </div>
-        </header>
+      <PageHeader
+        kicker="Espace de travail"
+        title="Calendrier"
+        sticker="calendar"
+        sub={`${events.length} événement${events.length !== 1 ? "s" : ""} planifié${events.length !== 1 ? "s" : ""}`}
+        right={
+          notifPerm === "granted" ? (
+            <span className="pill leaf">
+              <NotificationsActiveRounded style={{ fontSize: 16 }} /> Alertes actives
+            </span>
+          ) : (
+            <button className="pill amber btn-like" onClick={requestNotifPermission}>
+              <NotificationsOffRounded style={{ fontSize: 16 }} />
+              {notifPerm === "denied" ? "Alertes bloquées" : "Activer les alertes"}
+            </button>
+          )
+        }
+      />
 
-        {/* Gemini LLM Understanding */}
+      <section className="card">
+        <div className="card-head">
+          <h3 className="card-title">
+            <AutoAwesomeRounded /> Planifier avec Gemini
+          </h3>
+        </div>
         <GeminiBar context="events" placeholder="Réunion client demain 14h / Plan a call friday morning / Supprime tous les événements" onAction={handleGeminiAction} onRefresh={loadEvents} />
+      </section>
 
-        {/* Text command removed — using GeminiBar */}
-
-        {/* Calendar */}
-        <section style={styles.card}>
-          <div className="fc-dark">
+      <section className="card">
+          <div className="fc-coral">
             <FullCalendar
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
               initialView="timeGridWeek"
               headerToolbar={headerToolbar}
-              height={600}
+              height={620}
+              locale={frLocale}
+              firstDay={1}
+              buttonText={{ today: "Aujourd'hui", month: "Mois", week: "Semaine", day: "Jour" }}
               events={calendarEvents}
               eventContent={renderEventContent}
               eventMinHeight={40}
               dayMaxEvents={4}
               slotMinTime="07:00:00"
               slotMaxTime="22:00:00"
-              allDayText="All day"
+              allDayText="Journée"
               nowIndicator={true}
-              moreLinkContent={(args) => `+${args.num} more`}
+              moreLinkContent={(args) => `+${args.num} autres`}
             />
           </div>
-        </section>
+      </section>
 
-        {/* Upcoming Events list */}
-        <section style={styles.card}>
-          <h3 style={styles.cardTitle}>🗓 Upcoming Events</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {events.length === 0 ? (
-              <p style={styles.empty}>No events yet. Try: "Schedule meeting tomorrow 10am"</p>
-            ) : (
-              [...events]
-                .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
-                .map((ev, i) => {
-                  const col = EVENT_COLORS[i % EVENT_COLORS.length]
-                  const dt  = new Date(ev.start_at)
-                  const isToday = dt.toDateString() === new Date().toDateString()
-                  const isPast  = dt < new Date()
-                  return (
-                    <div key={ev.id} style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 14,
-                      padding: "12px 16px",
-                      background: isPast ? "#f8fafc" : col.bg,
-                      borderLeft: `5px solid ${isPast ? "#cbd5e1" : col.border}`,
-                      borderRadius: "0 10px 10px 0",
-                      opacity: isPast ? 0.6 : 1,
-                      boxShadow: isPast ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
-                    }}>
-                      <div style={{ flexShrink: 0, textAlign: "center", minWidth: 42 }}>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: isPast ? "#94a3b8" : col.border, lineHeight: 1 }}>
-                          {String(dt.getDate()).padStart(2, "0")}
-                        </div>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          {dt.toLocaleString("en", { month: "short" })}
-                        </div>
-                      </div>
-                      <div style={{ width: 1, height: 36, background: isPast ? "#e2e8f0" : col.border, opacity: 0.3 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: isPast ? "#64748b" : col.text,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {ev.title}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                          {dt.toLocaleString("en-US", { weekday: "short", hour: "2-digit", minute: "2-digit" })}
-                          {ev.end_at && ` → ${new Date(ev.end_at).toLocaleString("en-US", { hour: "2-digit", minute: "2-digit" })}`}
-                        </div>
-                      </div>
-                      {isToday && (
-                        <span style={{ fontSize: 10, fontWeight: 700, color: "#fff",
-                          background: col.border, borderRadius: 999, padding: "3px 8px", flexShrink: 0 }}>
-                          TODAY
-                        </span>
-                      )}
-                      {isPast && (
-                        <span style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8", flexShrink: 0 }}>Done</span>
-                      )}
-                    </div>
-                  )
-                })
-            )}
+        <section className="card">
+          <div className="card-head">
+            <h3 className="card-title">
+              <EventRounded /> Prochains événements
+            </h3>
           </div>
+          {upcoming.length === 0 ? (
+            <Empty sticker="calendar" text="Aucun événement." hint='Essaie : "Réunion demain 10h"' />
+          ) : (
+            <div className="ev-list">
+              {upcoming.map((ev) => (
+                <EventRow key={ev.id} ev={ev} />
+              ))}
+            </div>
+          )}
         </section>
-      </div>
     </div>
   )
 }
 
-// ---- Thème FullCalendar pro (Google Calendar style) ----
+// ---- Thème FullCalendar (coral) ----
 const fcTheme = `
-.fc-dark {
-  --fc-border-color: #e8edf5;
+.fc-coral {
+  --fc-border-color: #f6e2de;
   --fc-page-bg-color: transparent;
-  --fc-neutral-bg-color: #f8faff;
-  --fc-today-bg-color: #eff6ff;
-  --fc-now-indicator-color: #ef4444;
-  color: #1e293b;
+  --fc-neutral-bg-color: #fff5f3;
+  --fc-today-bg-color: #fff0ed;
+  --fc-now-indicator-color: #f2645a;
+  color: #2a2630;
 }
-.fc-dark .fc {
-  font-family: Inter, system-ui, sans-serif;
+.fc-coral .fc { font-family: inherit; }
+.fc-coral .fc-toolbar-title { font-size: 18px; font-weight: 800; color: #2a2630; text-transform: capitalize; }
+.fc-coral .fc-col-header-cell { background: #fff; padding: 10px 0; border-bottom: 1px solid #f6e2de; }
+.fc-coral .fc-col-header-cell-cushion {
+  color: #8b8395; font-size: 12px; font-weight: 700; text-decoration: none;
+  text-transform: uppercase; letter-spacing: 0.05em;
 }
-.fc-dark .fc-toolbar-title {
-  font-size: 17px;
-  font-weight: 700;
-  color: #1e293b;
+.fc-coral .fc-day-today .fc-col-header-cell-cushion { color: #f2645a; }
+.fc-coral .fc-daygrid-day-number,
+.fc-coral .fc-timegrid-slot-label-cushion { color: #8b8395; font-size: 12px; text-decoration: none; }
+.fc-coral .fc-button {
+  background: #fff5f3; border: none; color: #e04c42;
+  text-transform: capitalize; font-weight: 700; font-size: 13px;
+  box-shadow: none !important; border-radius: 999px !important; padding: 7px 14px; margin: 0 2px !important;
 }
-.fc-dark .fc-col-header-cell {
-  background: #f8faff;
-  padding: 8px 0;
-  border-bottom: 2px solid #e8edf5;
-}
-.fc-dark .fc-col-header-cell-cushion {
-  color: #475569;
-  font-size: 12px;
-  font-weight: 700;
-  text-decoration: none;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.fc-dark .fc-daygrid-day-number,
-.fc-dark .fc-timegrid-slot-label-cushion {
-  color: #64748b;
-  font-size: 12px;
-  text-decoration: none;
-}
-.fc-dark .fc-button {
-  background: #fff;
-  border: 1.5px solid #dbeafe;
-  color: #2563eb;
-  text-transform: capitalize;
-  font-weight: 600;
-  font-size: 13px;
-  box-shadow: none;
-  border-radius: 8px !important;
-  padding: 5px 12px;
-}
-.fc-dark .fc-button:hover { background: #eff6ff; }
-.fc-dark .fc-button-primary:not(:disabled).fc-button-active,
-.fc-dark .fc-button-primary:not(:disabled):active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
-}
-.fc-dark .fc-event {
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none;
-  cursor: pointer;
-}
-.fc-dark .fc-event:hover > div {
-  filter: brightness(0.95);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-}
-.fc-dark .fc-daygrid-event { margin: 2px 2px; }
-.fc-dark .fc-timegrid-event { border-radius: 0 8px 8px 0 !important; }
-.fc-dark .fc-event-main { padding: 0 !important; }
-.fc-dark .fc-more-link {
-  font-size: 11px; font-weight: 700;
-  color: #2563eb; padding: 2px 6px;
-  border-radius: 4px; background: #eff6ff;
-}
-.fc-dark .fc-daygrid-day.fc-day-today { background: #eff6ff; }
-.fc-dark .fc-timegrid-now-indicator-line { border-color: #ef4444; border-width: 2px; }
-.fc-dark .fc-timegrid-now-indicator-arrow { border-top-color: #ef4444; border-bottom-color: #ef4444; }
-.fc-dark a { color: inherit; }
-.fc-dark .fc-scrollgrid { border-radius: 12px; overflow: hidden; }
+.fc-coral .fc-button:hover { background: #ffe2de; color: #e04c42; }
+.fc-coral .fc-button-primary:disabled { background: #fff5f3; color: #e04c42; opacity: 0.5; }
+.fc-coral .fc-button-primary:not(:disabled).fc-button-active,
+.fc-coral .fc-button-primary:not(:disabled):active { background: #f2645a; color: #fff; }
+.fc-coral .fc-event { border: none !important; background: transparent !important; box-shadow: none; cursor: pointer; }
+.fc-coral .fc-event:hover > div { filter: brightness(0.97); box-shadow: 0 4px 12px rgba(242,100,90,0.18); }
+.fc-coral .fc-daygrid-event { margin: 2px 2px; }
+.fc-coral .fc-event-main { padding: 0 !important; }
+.fc-coral .fc-more-link { font-size: 11px; font-weight: 700; color: #e04c42; padding: 2px 6px; border-radius: 6px; background: #fff0ed; }
+.fc-coral .fc-timegrid-now-indicator-line { border-width: 2px; }
+.fc-coral a { color: inherit; }
+.fc-coral .fc-scrollgrid { border-radius: 16px; overflow: hidden; }
+.fc-coral .fc-timegrid-axis-cushion { font-size: 11px; color: #8b8395; }
+.fc-coral .fc-toolbar.fc-header-toolbar { margin-bottom: 18px; }
 `
-
-// ---- Styles statiques ----
-const styles: Record<string, CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    background: "#f0f4ff",
-    padding: 24,
-    fontFamily: "Inter, system-ui, sans-serif",
-    color: "#1e293b",
-    display: "flex",
-    justifyContent: "center",
-  },
-  shell: {
-    width: "100%",
-    maxWidth: 820,
-    display: "flex",
-    flexDirection: "column",
-    gap: 18,
-  },
-  header: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 10,
-    background: "#ffffff",
-    borderRadius: 16,
-    padding: "16px 20px",
-    border: "1px solid #e2e8f4",
-    boxShadow: "0 2px 12px rgba(37,99,235,0.07)",
-  },
-  backBtn: {
-    background: "#f1f5fe",
-    color: "#2563eb",
-    border: "1px solid #c7d9fc",
-    borderRadius: 8,
-    padding: "7px 12px",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 600,
-    flexShrink: 0,
-  },
-  badge: {
-    border: "1px solid #c7d9fc",
-    borderRadius: 999,
-    padding: "4px 12px",
-    fontSize: 12,
-    color: "#2563eb",
-    fontWeight: 700,
-    background: "#eff4ff",
-  },
-  title: { margin: 0, fontSize: 22, fontWeight: 800, color: "#1e293b", letterSpacing: 0.2 },
-  subtitle: { margin: "2px 0 0", fontSize: 12, color: "#94a3b8", fontWeight: 500 },
-  card: {
-    background: "#ffffff",
-    border: "1px solid #e2e8f4",
-    borderRadius: 16,
-    padding: 18,
-    boxShadow: "0 2px 12px rgba(37,99,235,0.07)",
-  },
-  cardTitle: {
-    margin: "0 0 12px",
-    fontSize: 15,
-    fontWeight: 700,
-    color: "#1e293b",
-  },
-  inputRow: { display: "flex", gap: 8, flexWrap: "wrap" },
-  input: {
-    flex: 1,
-    minWidth: 180,
-    background: "#f8faff",
-    border: "1px solid #c7d9fc",
-    borderRadius: 10,
-    padding: "10px 14px",
-    color: "#1e293b",
-    fontSize: 14,
-    outline: "none",
-  },
-  primaryBtn: {
-    background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-    color: "#fff",
-    border: "none",
-    borderRadius: 10,
-    padding: "10px 22px",
-    fontWeight: 700,
-    cursor: "pointer",
-    fontSize: 14,
-  },
-  list: { display: "flex", flexDirection: "column", gap: 8 },
-  empty: { color: "#94a3b8", margin: 0, fontSize: 14, textAlign: "center", padding: "20px 0" },
-  row: {
-    display: "grid",
-    gridTemplateColumns: "48px 1fr auto",
-    alignItems: "center",
-    gap: 12,
-    padding: "12px 14px",
-    background: "#ffffff",
-    borderRadius: 10,
-    border: "1px solid #e2e8f4",
-    fontSize: 14,
-    boxShadow: "0 1px 4px rgba(37,99,235,0.05)",
-  },
-  rowId: { color: "#94a3b8", fontWeight: 700, fontSize: 12 },
-  rowTitle: { color: "#1e293b", fontWeight: 500 },
-  rowDate: { color: "#64748b", fontSize: 12 },
-  toast: {
-    position: "fixed",
-    top: 20,
-    left: "50%",
-    transform: "translateX(-50%)",
-    background: "linear-gradient(135deg, #eff4ff, #fff)",
-    border: "1px solid #2563eb",
-    borderRadius: 12,
-    padding: "14px 22px",
-    color: "#1e293b",
-    fontWeight: 600,
-    fontSize: 15,
-    zIndex: 9999,
-    boxShadow: "0 8px 32px rgba(37,99,235,0.18)",
-    backdropFilter: "blur(12px)",
-    maxWidth: 420,
-    textAlign: "center",
-  } as CSSProperties,
-  notifBtn: {
-    background: "#fffbeb",
-    border: "1px solid #fbbf24",
-    borderRadius: 999,
-    padding: "4px 12px",
-    fontSize: 11,
-    color: "#d97706",
-    cursor: "pointer",
-    fontWeight: 600,
-  } as CSSProperties,
-  notifActive: {
-    background: "#f0fdf4",
-    border: "1px solid #86efac",
-    borderRadius: 999,
-    padding: "4px 12px",
-    fontSize: 11,
-    color: "#16a34a",
-    fontWeight: 600,
-  } as CSSProperties,
-}

@@ -19,7 +19,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
-    title: 'Tradrly Bot',
+    title: 'Tradroro',
+    icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,

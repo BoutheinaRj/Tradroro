@@ -1,7 +1,48 @@
 import { useEffect, useRef, useState } from "react"
+import type { ReactNode } from "react"
+import HomeRounded from "@mui/icons-material/HomeRounded"
+import TaskAltRounded from "@mui/icons-material/TaskAltRounded"
+import CalendarMonthRounded from "@mui/icons-material/CalendarMonthRounded"
+import TimerRounded from "@mui/icons-material/TimerRounded"
+import FavoriteRounded from "@mui/icons-material/FavoriteRounded"
+import DesktopWindowsRounded from "@mui/icons-material/DesktopWindowsRounded"
+import CodeRounded from "@mui/icons-material/CodeRounded"
+import ForumRounded from "@mui/icons-material/ForumRounded"
+import AutoModeRounded from "@mui/icons-material/AutoModeRounded"
+import MicRounded from "@mui/icons-material/MicRounded"
+import StopRounded from "@mui/icons-material/StopRounded"
 import { DATA, findReply } from "./data"
 import type { CategoryKey, ChatMessage } from "./types"
 import ProductivityHome from "./ProductivityHome"
+import TasksView from "./TasksView"
+import CalendarView from "./CalendarView"
+import FocusView from "./FocusView"
+import { Logo, PageHeader } from "./ui"
+import { Sticker } from "./stickers"
+
+export type Page = "home" | "tasks" | "calendar" | "focus" | "chat"
+
+const WORKSPACE: { key: Page; label: string; icon: ReactNode }[] = [
+  { key: "home", label: "Accueil", icon: <HomeRounded /> },
+  { key: "tasks", label: "Tâches", icon: <TaskAltRounded /> },
+  { key: "calendar", label: "Calendrier", icon: <CalendarMonthRounded /> },
+  { key: "focus", label: "Focus", icon: <TimerRounded /> },
+]
+
+const ASSISTANTS: { key: CategoryKey; label: string; desc: string; icon: ReactNode }[] = [
+  { key: "comp", label: "Nova", desc: "Ton compagnon personnel — parle librement, Nova t'écoute.", icon: <FavoriteRounded /> },
+  { key: "desktop", label: "Contrôle du bureau", desc: "Ouvre des apps, règle le son, gère tes fichiers.", icon: <DesktopWindowsRounded /> },
+  { key: "dev", label: "Assistant dev", desc: "Explique, corrige et génère du code.", icon: <CodeRounded /> },
+  { key: "comm", label: "Communication", desc: "Emails, Slack et résumés de réunions.", icon: <ForumRounded /> },
+  { key: "auto", label: "Automatisation", desc: "Planifie des tâches répétitives.", icon: <AutoModeRounded /> },
+]
+
+function initialRoute(): { page: Page; cat: CategoryKey } {
+  const [p, c] = window.location.hash.slice(1).split("/")
+  const page = (["home", "tasks", "calendar", "focus", "chat"] as Page[]).find((k) => k === p) ?? "home"
+  const cat = ASSISTANTS.find((a) => a.key === c)?.key ?? "comp"
+  return { page, cat }
+}
 
 function getCompanionSessionId(): string {
   const key = "tradrly_companion_session"
@@ -24,7 +65,9 @@ function mapCompanionMood(value: unknown): NonNullable<ChatMessage["emotion"]> {
 }
 
 export default function App() {
-  const [cat, setCat] = useState<CategoryKey>("desktop")
+  // La page courante est gardée dans le hash (#tasks, #chat/comp…) pour survivre aux rechargements
+  const [page, setPage] = useState<Page>(() => initialRoute().page)
+  const [cat, setCat] = useState<CategoryKey>(() => initialRoute().cat)
   const [msgs, setMsgs] = useState<ChatMessage[]>([])
   const [typing, setTyping] = useState(false)
   const [status, setStatus] = useState("Online")
@@ -206,7 +249,7 @@ export default function App() {
 
     // Arabic → gTTS (browser TTS has no Arabic voice on Windows)
     if (lang === "ar") {
-      fetch(`http://localhost:8000/api/tts?text=${encodeURIComponent(text)}&lang=ar`)
+      fetch(`http://localhost:8000/api/tts?text=${encodeURIComponent(text)}&lang=ar`, { method: "POST" })
         .then((r) => r.json())
         .then((data) => {
           if (data.audio_base64) {
@@ -253,7 +296,7 @@ export default function App() {
       setMsgs([
         {
           who: "bot",
-          text: `🖥️ Desktop Control ready. Tell me any command: open apps, adjust volume, manage files, etc.`,
+          text: `Contrôle du bureau prêt. Demande-moi n'importe quoi : ouvrir une app, régler le volume, gérer des fichiers…`,
         },
       ])
       return
@@ -262,10 +305,14 @@ export default function App() {
     setMsgs([
       {
         who: "bot",
-        text: `Hi 👋 I'm TRADRLY BOT. Pick a "${DATA[cat].name}" command below.`,
+        text: `Salut 👋 Choisis une commande ci-dessous ou écris la tienne.`,
       },
     ])
   }, [cat])
+
+  useEffect(() => {
+    window.location.hash = page === "chat" ? `chat/${cat}` : page
+  }, [page, cat])
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
@@ -337,6 +384,17 @@ export default function App() {
 
   const isCompanion = cat === "comp"
   const isDesktop = cat === "desktop"
+
+  // Dev / Communication / Automatisation : assistants de démo, réponses simulées (data.ts)
+  if (!isCompanion && !isDesktop) {
+    window.setTimeout(() => {
+      setTyping(false);
+      setStatus("Online");
+      setMsgs((m) => [...m, { who: "bot", text: findReply(text) }]);
+    }, 900);
+    return
+  }
+
   const context = isCompanion ? "general" : "tasks"
   const API_URL = isCompanion
     ? "http://localhost:8000/api/chat/companion"
@@ -468,120 +526,157 @@ export default function App() {
     }
   }
 
+  const assistant = ASSISTANTS.find((a) => a.key === cat) ?? ASSISTANTS[0]
+
+  function openAssistant(k: CategoryKey) {
+    setCat(k)
+    setPage("chat")
+  }
+
   return (
-    <div className="wrap">
-      <header className="hero">
-        <div className={"avatar" + (typing ? " talk" : "")}>
-          <div className="face">
-            <span className="eye" />
-            <span className="eye" />
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className={"brand-mark" + (typing ? " talk" : "")}>
+            <Logo />
+          </div>
+          <div>
+            <div className="brand-name">Tradroro</div>
+            <div className="brand-sub">Pomodoro &amp; productivité</div>
           </div>
         </div>
-        <div>
-          <div className="eyebrow">React + TS demo • Desktop AI assistant</div>
-          <h1>TRADRLY BOT</h1>
-          <p className="sub">Your smart companion that understands, speaks, and acts.</p>
+
+        <div className="nav-label">Espace de travail</div>
+        {WORKSPACE.map((n) => (
+          <button
+            key={n.key}
+            className={"nav-item" + (page === n.key ? " active" : "")}
+            onClick={() => setPage(n.key)}
+          >
+            {n.icon}
+            {n.label}
+          </button>
+        ))}
+
+        <div className="nav-label">Assistants</div>
+        {ASSISTANTS.map((a) => (
+          <button
+            key={a.key}
+            className={"nav-item" + (page === "chat" && cat === a.key ? " active" : "")}
+            onClick={() => openAssistant(a.key)}
+          >
+            {a.icon}
+            {a.label}
+          </button>
+        ))}
+
+        <div className="mascot-card">
+          <Sticker name="tomato" size={46} rotate={-8} className="float" />
+          <span>Une tâche à la fois, tu gères !</span>
         </div>
-      </header>
 
-      <div className="pills">
-        <span className="pill">🎙️ 100% voice control</span>
-        <span className="pill">🧠 Advanced AI (GPT-4o)</span>
-        <span className="pill">😊 Emotional presence</span>
-        <span className="pill">🔒 Privacy respected</span>
-      </div>
+        <div className="sidebar-foot">
+          <span className="online-dot" />
+          Gemini AI · {status === "Online" ? "en ligne" : status}
+        </div>
+      </aside>
 
-      <div className="app">
-        <aside className="side">
-          <h3>Categories</h3>
-          {(Object.keys(DATA) as CategoryKey[]).map((k) => (
-            <button
-              key={k}
-              className={"cat" + (k === cat ? " active" : "")}
-              onClick={() => setCat(k)}
-            >
-              <span>{DATA[k].icon}</span> {DATA[k].name}
-            </button>
-          ))}
-        </aside>
-        {cat === "prod" ? (
-          <ProductivityHome />
+      <main className="main">
+        {page === "home" ? (
+          <ProductivityHome go={setPage} />
+        ) : page === "tasks" ? (
+          <TasksView />
+        ) : page === "calendar" ? (
+          <CalendarView />
+        ) : page === "focus" ? (
+          <FocusView />
         ) : (
-          <div className="chatwrap" data-led-state={cat === "comp" ? companionMood : undefined}>
-            <div className="chead">
-              {cat === "comp" ? (
-                <div className={`nova-avatar ${companionMood} ${typing ? "talk" : ""}`} data-led-state={companionMood} aria-label="Nova avatar" title="Nova">
-                  <span className="nova-orb" />
-                  <span className="nova-face">
-                    <span className="nova-eye" />
-                    <span className="nova-eye" />
+          <div className="page">
+            <PageHeader kicker="Assistant" title={assistant.label} sub={assistant.desc} sticker={cat === "comp" ? "heart" : "sparkle"} />
+
+            <div className="chatwrap" data-led-state={cat === "comp" ? companionMood : undefined}>
+              <div className="chead">
+                {cat === "comp" ? (
+                  <div className={`nova-avatar ${companionMood} ${typing ? "talk" : ""}`} data-led-state={companionMood} aria-label="Nova avatar" title="Nova">
+                    <span className="nova-orb" />
+                    <span className="nova-face">
+                      <span className="nova-eye" />
+                      <span className="nova-eye" />
+                    </span>
+                  </div>
+                ) : (
+                  <div className="chead-icon">{assistant.icon}</div>
+                )}
+                <div>
+                  <strong>{assistant.label}</strong>
+                  <span className="status">
+                    <span className="online-dot" /> {status === "Online" ? "En ligne" : status}
                   </span>
                 </div>
-              ) : (
-                <span className="dot" />
-              )}
-              <strong>{DATA[cat].name}</strong>
-              <span className="status">{status}</span>
-            </div>
-
-            <div className="chat" ref={chatRef}>
-              {msgs.map((m, i) => (
-                <div
-                  key={i}
-                  className={"msg " + m.who + (cat === "comp" && m.who === "bot" && m.emotion ? ` mood-${m.emotion}` : "")}
-                  data-emotion={m.emotion ?? "neutral"}
-                >
-                  {m.text}
-                </div>
-              ))}
-              {typing && (
-                <div className="msg bot typing">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              )}
-            </div>
-
-            {cat !== "comp" && cat !== "desktop" && (
-              <div className="sugg">
-                {DATA[cat].items.map((it, i) => (
-                  <button key={i} className="chip" onClick={() => send(it.cmd)}>
-                    {"« " + it.cmd + " »"}
-                  </button>
-                ))}
               </div>
-            )}
 
-            <div className="inputbar">
-              <input
-                value={val}
-                onChange={(e) => setVal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") send(val)
-                }}
-                placeholder={
-                  cat === "comp" 
-                    ? "Type freely... Nova listens." 
-                    : cat === "desktop"
-                    ? "Tell me what to do on your desktop..."
-                    : "Type or click a command..."
-                }
-              />
-              <button className={"mic" + (cat === "comp" && isListening ? " mic-listening" : "")} onClick={mic} title={cat === "comp" ? (isListening ? "Stop listening" : "Dictate with microphone") : "Speak"}>
-                {cat === "comp" ? (isListening ? "⏹️" : "🎙️") : "🎙️"}
-              </button>
-              <button className="btn" onClick={() => send(val)}>
-                Send
-              </button>
+              <div className="chat" ref={chatRef}>
+                {msgs.length === 0 && (
+                  <div className="empty" style={{ margin: "auto" }}>
+                    <Sticker name="heart" size={80} rotate={-8} className="float" />
+                    <div>Comment te sens-tu aujourd'hui ?</div>
+                    <div className="empty-hint">Écris ou utilise le micro — français, anglais ou arabe.</div>
+                  </div>
+                )}
+                {msgs.map((m, i) => (
+                  <div
+                    key={i}
+                    className={"msg " + m.who + (cat === "comp" && m.who === "bot" && m.emotion ? ` mood-${m.emotion}` : "")}
+                    data-emotion={m.emotion ?? "neutral"}
+                  >
+                    {m.text}
+                  </div>
+                ))}
+                {typing && (
+                  <div className="msg bot typing">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                )}
+              </div>
+
+              {cat !== "comp" && cat !== "desktop" && (
+                <div className="sugg">
+                  {DATA[cat].items.map((it, i) => (
+                    <button key={i} className="chip" onClick={() => send(it.cmd)}>
+                      {it.cmd}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="inputbar">
+                <input
+                  value={val}
+                  onChange={(e) => setVal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") send(val)
+                  }}
+                  placeholder={
+                    cat === "comp"
+                      ? "Écris librement… Nova t'écoute."
+                      : cat === "desktop"
+                      ? "Dis-moi quoi faire sur ton bureau…"
+                      : "Écris ou choisis une commande…"
+                  }
+                />
+                <button className={"mic" + (cat === "comp" && isListening ? " mic-listening" : "")} onClick={mic} title={cat === "comp" ? (isListening ? "Arrêter l'écoute" : "Dicter au micro") : "Parler"}>
+                  {cat === "comp" && isListening ? <StopRounded /> : <MicRounded />}
+                </button>
+                <button className="btn" onClick={() => send(val)}>
+                  Envoyer
+                </button>
+              </div>
             </div>
           </div>
         )}
-      </div>
-
-      <p className="foot">
-        TRADRLY BOT — React + TypeScript prototype.
-      </p>
+      </main>
     </div>
   )
 }

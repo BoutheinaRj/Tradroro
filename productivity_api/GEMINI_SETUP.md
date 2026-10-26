@@ -24,9 +24,9 @@ set GEMINI_API_KEY=votre-clé-ici
 export GEMINI_API_KEY="votre-clé-ici"
 ```
 
-Ou créez un fichier `.env` à la racine du projet :
+Créez `productivity_api/.env` avec la ligne suivante :
 ```
-GEMINI_API_KEY=sk-...
+GEMINI_API_KEY=votre-clé-API-Gemini
 ```
 
 ### 2. Installer les dépendances

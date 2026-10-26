@@ -237,7 +237,27 @@ def handle_events(intent: str, params: dict, db):
 
     return {"message": "Je n'ai pas compris pour le calendrier."}
 
+def _expire_finished_focus(db):
+    """Passe en « completed » les sessions dont la durée est écoulée."""
+    now = datetime.now()
+    for s in db.query(FocusSession).filter(FocusSession.status == "running").all():
+        if s.started_at and s.started_at + timedelta(minutes=s.minutes) <= now:
+            s.status = "completed"
+            s.ended_at = s.started_at + timedelta(minutes=s.minutes)
+    db.commit()
+
+def _stop_open_focus(db):
+    """Arrête toutes les sessions en cours ou en pause (une seule session active à la fois)."""
+    stopped = []
+    for s in db.query(FocusSession).filter(FocusSession.status.in_(["running", "paused"])).all():
+        s.status = "stopped"
+        s.ended_at = datetime.now()
+        stopped.append(s)
+    db.commit()
+    return stopped
+
 def handle_focus(intent: str, params: dict, db):
+    _expire_finished_focus(db)
     if intent == "start_focus":
         minutes = params.get("minutes", 25)
         try:
@@ -246,6 +266,7 @@ def handle_focus(intent: str, params: dict, db):
             minutes = 25
         if minutes <= 0 or minutes > 240:
             return {"message": "Durée invalide (1–240 minutes)."}
+        _stop_open_focus(db)
         s = FocusSession(minutes=minutes, status="running", started_at=datetime.now())
         db.add(s)
         db.commit()
@@ -253,12 +274,10 @@ def handle_focus(intent: str, params: dict, db):
         return {"message": f"Focus démarré pour {minutes} minutes.", "data": serialize_focus(s)}
 
     if intent == "stop_focus":
-        s = db.query(FocusSession).filter(FocusSession.status == "running").first()
-        if not s:
+        stopped = _stop_open_focus(db)
+        if not stopped:
             return {"message": "Aucun focus en cours."}
-        s.status = "stopped"
-        s.ended_at = datetime.now()
-        db.commit()
+        s = stopped[-1]
         db.refresh(s)
         return {"message": "Focus arrêté.", "data": serialize_focus(s)}
 
@@ -360,6 +379,7 @@ def list_tasks():
 def list_focus():
     db = SessionLocal()
     try:
+        _expire_finished_focus(db)
         return [serialize_focus(s) for s in db.query(FocusSession).order_by(FocusSession.id.desc()).all()]
     finally:
         db.close()
@@ -724,22 +744,26 @@ def _execute_from_gemini(intent: str, params: dict, db) -> dict:
         duration = params.get("duration") or params.get("minutes") or 25
         try: duration = int(duration)
         except Exception: duration = 25
+        _expire_finished_focus(db)
+        _stop_open_focus(db)
         s = FocusSession(minutes=duration, status="running", started_at=datetime.now())
         db.add(s); db.commit(); db.refresh(s)
         return {"executed": True, "action": "start_focus",
                 "message": f"🎯 Focus started for {duration} minutes!", "data": serialize_focus(s)}
 
     if intent == "stop_focus":
-        s = db.query(FocusSession).filter(FocusSession.status == "running").first()
-        if not s:
+        _expire_finished_focus(db)
+        stopped = _stop_open_focus(db)
+        if not stopped:
             return {"executed": False, "message": "No focus session running."}
-        s.status = "stopped"; s.ended_at = datetime.now()
-        db.commit(); db.refresh(s)
+        s = stopped[-1]
+        db.refresh(s)
         return {"executed": True, "action": "stop_focus",
                 "message": "⏹️ Focus stopped.", "data": serialize_focus(s)}
 
     if intent == "pause_focus":
-        s = db.query(FocusSession).filter(FocusSession.status == "running").first()
+        _expire_finished_focus(db)
+        s = db.query(FocusSession).filter(FocusSession.status == "running").order_by(FocusSession.id.desc()).first()
         if not s:
             return {"executed": False, "message": "No focus session running."}
         s.status = "paused"; s.ended_at = datetime.now()
@@ -748,7 +772,7 @@ def _execute_from_gemini(intent: str, params: dict, db) -> dict:
                 "message": "⏸️ Focus paused.", "data": serialize_focus(s)}
 
     if intent == "resume_focus":
-        s = db.query(FocusSession).filter(FocusSession.status == "paused").first()
+        s = db.query(FocusSession).filter(FocusSession.status == "paused").order_by(FocusSession.id.desc()).first()
         if not s:
             return {"executed": False, "message": "No paused focus session."}
         s.status = "running"; s.ended_at = None

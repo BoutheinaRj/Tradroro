@@ -98,5 +98,5 @@ export function findReply(text: string): string {
   const match = all.find((i) => low.includes(i.cmd.toLowerCase().slice(0, 12)))
   return match
     ? match.res
-    : "🤖 Got it! (Full version: I analyze first, then act automatically.)"
+    : "🤖 Bien reçu ! (Version complète : j'analyse d'abord, puis j'agis automatiquement.)"
 }

@@ -2,7 +2,7 @@
   "name": "tradrly-bot",
   "private": true,
   "version": "0.1.0",
-  "description": "Tradrly Bot - Desktop AI Assistant",
+  "description": "Tradroro - Pomodoro & productivité avec assistant IA",
   "author": "BoutheinaRj",
   "type": "module",
   "main": "electron/main.cjs",
@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "com.tradrly.bot",
-    "productName": "Tradrly Bot",
+    "productName": "Tradroro",
     "asar": false,
     "directories": {
       "output": "release"

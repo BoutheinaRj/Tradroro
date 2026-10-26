@@ -137,7 +137,7 @@ function createTestFileResult(params) {
   const content =
     typeof params.content === "string" && params.content.length > 0
       ? params.content
-      : `This is a test file created by TRADRLY BOT 🤖
+      : `This is a test file created by Tradroro 🍅
     Content was added automatically.
     Date: ${new Date().toLocaleString()}`
 
@@ -525,5 +525,5 @@ app.post("/api/focus/resume", (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`🚀 TRADRLY BOT Server running on http://localhost:${PORT}`)
+  console.log(`🚀 Tradroro Server running on http://localhost:${PORT}`)
 })

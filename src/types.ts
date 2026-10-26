@@ -1,4 +1,4 @@
-// Types partages de l'application TRADRLY BOT
+// Types partages de l'application Tradroro
 
 export type CategoryKey =
   | "desktop"

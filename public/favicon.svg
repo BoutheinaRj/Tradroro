@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Tomate Pomodoro : corps, reflet, cadran et feuilles -->
+  <path d="M32 14C14 14 6 27 7.5 38 9 51 19 58 32 58s23-7 24.5-20C58 27 50 14 32 14Z" fill="#f2645a"/>
+  <path d="M15 28c2.5-5 7-8 11-8.5" stroke="#ff9e94" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <circle cx="32" cy="37" r="13" fill="#fff"/>
+  <path d="M32 37v-8" stroke="#2a2630" stroke-width="3" stroke-linecap="round"/>
+  <path d="M32 37l5.5 3.5" stroke="#f2645a" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="32" cy="37" r="2" fill="#2a2630"/>
+  <path d="M32 15c-3.5-6-10-6.5-14-3 6 .5 10 2 14 5Z" fill="#2fa36b"/>
+  <path d="M32 15c3.5-6 10-6.5 14-3-6 .5-10 2-14 5Z" fill="#2fa36b"/>
+  <path d="M32 17c-2-4.5-2-7.5 0-10.5 2 3 2 6 0 10.5Z" fill="#46c486"/>
+  <path d="M32 7.5V3.5" stroke="#2fa36b" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,4 +1,6 @@
-﻿import { useState, useRef, useEffect } from "react"
+import MicRounded from "@mui/icons-material/MicRounded"
+import StopRounded from "@mui/icons-material/StopRounded"
+import { useState, useRef, useEffect } from "react"
 
 const API = "http://localhost:8000"
 
@@ -36,10 +38,10 @@ type Props = {
 }
 
 const COLORS: Record<string, string> = {
-  tasks:   "#2563eb",
-  events:  "#7c3aed",
-  focus:   "#0ea5e9",
-  general: "#0d9488",
+  tasks:   "#f2645a",
+  events:  "#f2645a",
+  focus:   "#f2645a",
+  general: "#f2645a",
 }
 
 const EXEC_INTENTS = new Set([
@@ -752,7 +754,7 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
   const confColor = pct >= 80 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626"
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {/* Toast Notification */}
       {toast && (
         <div style={{
@@ -760,8 +762,8 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
           top: 16,
           right: 16,
           padding: "12px 16px",
-          borderRadius: 8,
-          background: toast.type === "success" ? "#10b981" : "#f59e0b",
+          borderRadius: 14,
+          background: toast.type === "success" ? "#2fa36b" : "#f0a020",
           color: "#fff",
           fontSize: 13,
           fontWeight: 600,
@@ -782,22 +784,20 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
         <span style={{
           fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase",
           color: color, background: `${color}12`, border: `1px solid ${color}33`,
-          borderRadius: 4, padding: "2px 7px",
+          borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", flexShrink: 0,
         }}>Gemini AI</span>
-        <span style={{ fontSize: 11, color: "#64748b" }}>
-          Speak freely — French, English or Arabic, no exact keywords needed
+        <span style={{ fontSize: 12, color: "#8b8395" }}>
+          Parle librement — français, anglais ou arabe, sans mots-clés exacts
         </span>
       </div>
 
       {/* Barre de saisie */}
       <div style={{
         display: "flex", alignItems: "center", gap: 10,
-        padding: "10px 14px", borderRadius: 10,
-        background: "#ffffff",
-        border: `1.5px solid ${color}55`,
-        boxShadow: `0 2px 8px ${color}12`,
+        padding: "6px 6px 6px 18px", borderRadius: 999,
+        background: "#fff5f3",
+        border: `1.5px solid ${color}22`,
       }}>
-        <span style={{ fontSize: 15 }}>✨</span>
         
         {/* Voix ou texte */}
         {isRecording ? (
@@ -808,7 +808,7 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
             gap: 12,
             padding: "8px 14px",
             background: "#fef2f2",
-            borderRadius: 7,
+            borderRadius: 999,
             border: "1px solid #fecaca",
             animation: "slideIn 0.3s ease-out"
           }}>
@@ -872,7 +872,7 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
             placeholder={placeholder ?? "Say anything in English, French or Arabic..."}
             style={{
               flex: 1, background: "transparent", border: "none", outline: "none",
-              color: "#1e293b", fontSize: 14, fontFamily: "inherit", caretColor: color,
+              color: "#2a2630", fontSize: 14, fontFamily: "inherit", caretColor: color, padding: "10px 0",
             }}
           />
         )}
@@ -884,11 +884,11 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
             onClick={isRecording ? stopRecording : startRecording}
             style={{
               border: "none",
-              borderRadius: 8,
-              padding: isRecording ? "8px 12px" : "8px 12px",
+              borderRadius: 999,
+              padding: "8px 12px",
               background: isRecording 
                 ? "linear-gradient(135deg, #ef4444, #dc2626)" 
-                : `linear-gradient(135deg, ${color}99, ${color}cc)`,
+                : color,
               color: "#fff",
               fontSize: isRecording ? 16 : 14,
               cursor: "pointer",
@@ -896,7 +896,7 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
               transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
               boxShadow: isRecording 
                 ? "0 4px 12px rgba(239, 68, 68, 0.3)"
-                : "0 2px 6px rgba(0, 0, 0, 0.08)",
+                : `0 6px 14px ${color}44`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -912,7 +912,7 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
               e.currentTarget.style.transform = "scale(1)"
             }}
           >
-            {isRecording ? "⏹️ Stop" : "🎤"}
+            {isRecording ? <StopRounded /> : <MicRounded />}
           </button>
 
           {/* Bouton Envoyer */}
@@ -920,13 +920,13 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
             <button
               onClick={() => { send(input || voiceTranscript); setInput(""); setVoiceTranscript("") }}
               style={{
-                border: "none", borderRadius: 7, padding: "5px 14px",
+                border: "none", borderRadius: 999, padding: "0 20px", height: 44,
                 background: `linear-gradient(135deg, ${color}, ${color}cc)`,
                 color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
                 boxShadow: `0 2px 8px ${color}44`,
               }}
             >
-              {loading ? "⏳" : "Send"}
+              {loading ? "⏳" : "Envoyer"}
             </button>
           )}
         </div>
@@ -935,10 +935,10 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
       {/* Panneau résultat */}
       {show && (
         <div style={{
-          borderRadius: 12, border: `1px solid ${color}33`,
+          borderRadius: 18, border: `1px solid ${color}26`,
           background: "#ffffff",
           overflow: "hidden",
-          boxShadow: "0 4px 20px rgba(37,99,235,0.10)",
+          boxShadow: "0 8px 24px rgba(242,100,90,0.10)",
         }}>
           {/* Header */}
           <div style={{
@@ -946,7 +946,7 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
             padding: "9px 14px", background: `${color}0d`,
             borderBottom: `1px solid ${color}22`,
           }}>
-            <span style={{ color, fontWeight: 700, fontSize: 13 }}>✨ TRADRLY AI</span>
+            <span style={{ color, fontWeight: 700, fontSize: 13 }}>✨ Tradroro AI</span>
             <button onClick={() => { setShow(false); setUnderstanding(null); setAction(null) }}
               style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 13 }}>
               ✕
@@ -963,7 +963,7 @@ export default function GeminiBar({ context, placeholder, onAction, onRefresh }:
                   animationDelay: `${i * 0.2}s`,
                 }} />
               ))}
-              <span style={{ color: "#64748b", fontSize: 13 }}>Gemini is thinking...</span>
+              <span style={{ color: "#8b8395", fontSize: 13 }}>Gemini réfléchit…</span>
             </div>
           ) : understanding?.error === "rate_limit" ? (
             <div style={{ padding: "12px 14px" }}>

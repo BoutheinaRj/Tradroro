@@ -56,6 +56,12 @@ APP_MAP = {
     "parametres": "ms-settings:",
 }
 
+# Processus réellement lancés par certains exécutables (à fermer à leur place)
+CLOSE_ALIASES = {
+    "calc.exe": ["CalculatorApp.exe", "calc.exe"],
+    "mspaint.exe": ["mspaint.exe", "PaintApp.exe"],
+}
+
 DESKTOP_SYSTEM_PROMPT = """You are a desktop control AI assistant.
 Extract the user's intent and parameters from any desktop command.
 
@@ -168,7 +174,13 @@ def _close_app(app_name: str) -> str:
         exe = app_name if app_name.endswith(".exe") else app_name + ".exe"
 
     try:
-        subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
+        # Certains lanceurs ouvrent un autre processus (ex. calc.exe → CalculatorApp.exe sous Windows 10/11)
+        killed = False
+        for name in CLOSE_ALIASES.get(exe.lower(), [exe]):
+            result = subprocess.run(["taskkill", "/F", "/IM", name], capture_output=True)
+            killed = killed or result.returncode == 0
+        if not killed:
+            return f"⚠️ {app_name} n'est pas ouvert."
         return f"✅ {app_name} closed."
     except Exception as e:
         return f"⚠️ Could not close {app_name}: {e}"
@@ -338,7 +350,7 @@ def execute_desktop_command(text: str) -> Dict[str, Any]:
     try:
         exec_result = _DISPATCHER[action](params)
         return {
-            "success": True,
+            "success": not exec_result.startswith("⚠️"),
             "understood": True,
             "action": action,
             "message": f"{emoji} {gemini_reply}\n{exec_result}",
